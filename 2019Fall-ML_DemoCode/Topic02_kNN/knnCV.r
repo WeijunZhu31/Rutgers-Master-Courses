@@ -1,0 +1,122 @@
+# In this file we experiment with the 1-folding cross-validation and apply
+# it to the bank data. Note how much faster it runs than the random
+ #validation method we use in knnValidation.r file
+#
+# This file works on data available at a well-know repository of data
+# hosted by the University of California-Irvine. The website for this
+# dataset:
+#  http://archive.ics.uci.edu/ml/datasets/Credit+Approval
+# 
+# The data contains information about individuals and whether they
+# were approved  for credit. The problem is that the name of variables
+# have been changed for privacy concerns. So we add  our own names.
+
+# The data does not have any headers, so we add generic headers A1 to
+# A16.
+
+cat("We are downloading the data from a web site Hit Enter to continue\n")
+readline()
+
+# This data has some parts missing (indicated by '?'). To tell the data
+# frame that this we add na.string="?". Also note that the data is read
+# off a web site directly, and not from a local file. Since there
+# are no headers, we add headers A1 to A16 using sapply, and paste
+# functions
+bankData1 <-
+    read.csv("http://archive.ics.uci.edu/ml/machine-learning-databases/credit-screening/crx.data",   na.strings="?",
+        col.names=sapply(1:16, function(x){return (paste("A",x,sep=""))}))
+cat("\nnorw(bankData) ", nrow(bankData1), "\n")
+
+#Remove rows with <NA> in A2 column. 
+bankData <- bankData1[!is.na(bankData1$A2),]# & !is.na(bankData1$A2)&!is.na(bankData1$A16),]
+#(You can add A3 and A16 as well)
+#bankData <- bankData1[!is.na(bankData1$A2)&!is.na(bankData1$A3)&!is.na(bankData1$A16),]
+cat("Top rows of bankData:\n")
+print(head(bankData))
+
+cat("Bottom rows of bankData:\n")
+print(tail(bankData))
+readline()
+
+
+# We can now plot the combinations of A2 and A3 for acceptance (in
+# blue) and no acceptance (in red)
+cat("\n Hit Enter to see the scatterplot of A2 vs A3 for
+acceptance cases:\n")
+readline()
+# Set up the graphics pane:
+
+cat("\nSetting up the graphics pane:\n")
+plot(bankData[,"A2"], bankData[,"A3"], col="white", 
+    main="Scatter plot of bankData, A2 and A3 (orange reject bankData blue accept)", 
+       xlab="A2", ylab="A3")
+points(bankData[bankData$A16=="+","A2"],
+		bankData[bankData$A16=="+", "A3"], col="cornflowerblue",pch=18)
+#cat("\nHit Enter to add the non-acceptance points:\n")
+#readline()
+points(bankData[bankData$A16=="-","A2"],
+		bankData[bankData$A16=="-", "A3"], col="orange",pch=20)
+####################Now build the CV for knn model#############################
+
+newA2<-seq(mA2<-floor(min(bankData$A2)),MA2<-ceiling(max(bankData$A2)),by=1)
+newA3<-seq(mA3<-floor(min(bankData$A3)),MA3<-ceiling(max(bankData$A3)),by=0.5)
+
+# Creating a grid of points to find their classification under kNN
+#newPts0<-data.frame(A2=c(), A3=c())
+#for (i in newA2){
+#   for (j in newA3){
+#      newPts0<-rbind(data.frame(A2=i, A3=j), newPts0)
+#   }
+#}
+newPts0<-data.frame(A2=kronecker(newA2, rep(1,length(newA3))), 
+                    A3=rep(newA3,length(newA2)))
+# run train.kknn for 1-folding CV to find the best k:
+cv1=train.kknn(A16~A2+A3, ks=seq(1,500,by=10),data=bankData, 
+        kernel="rectangular")
+summary(cv1)
+k=cv1$best.parameters[[2]]
+# Using the best k found by 1-folding CV build the model and predict draw
+# heat map
+knnModel <- kknn(A16 ~ A3 + A2, k=k,train=bankData,
+                test=newPts0,kernel="rectangular")
+knnPred<-predict(knnModel, data=newPts0)
+newPts<-cbind(newPts0,data.frame(A16=knnPred))
+   
+z=matrix(knnModel$prob,nrow=length(newA2),
+             ncol = length(newA3),byrow = T)
+# Setting up the graphics pane. NewPts is a grid of points on the A2-A3
+# plane and then the knnModel is used to predict (red for predicting to reject 
+# bankData, blue for predicting accept bankData) We use image and contour to
+# draw the boundary between red and blue regions.  Image makes a bit more
+# resolution and instead of just blue and red, it changes color for larger
+# or smaller probabilities. This is sometimes called "heat map"
+
+#image(newA2,newA3,z,col=rainbow(20,start=.67, end=.09),main=paste(k,"NN"))
+image(newA2,newA3,z,col=rainbow(20,start=.55, end=.1),main=paste(k,"NN"))
+# For contour we set levels=0.5 so only the boundary between classes are
+# drawn, add = TRUE so that the contour is added to the existing graph
+
+contour(newA2,newA3,z,levels=c(0.5),add=TRUE,col="darkgreen", 
+            drawlabels=FALSE,lwd=2)
+points(newPts[newPts$A16=='+',"A2"],newPts[newPts$A16=='+',"A3"],
+					pch='.',cex=2,col="cornflowerblue")
+points(newPts[newPts$A16=='-',"A2"],newPts[newPts$A16=='-',"A3"],
+				pch='.',cex=2,col="orange")
+dev.new()
+# Redraw contour without the image heatmap
+contour(newA2,newA3,z,levels=c(0.5),col="darkgreen",
+        drawlabels=FALSE,lwd=2,main=paste(k,"NN"))
+points(newPts[newPts$A16=='+',"A2"],newPts[newPts$A16=='+',"A3"],
+					pch='.',cex=2,col="cornflowerblue")
+points(newPts[newPts$A16=='-',"A2"],newPts[newPts$A16=='-',"A3"],
+				pch='.',cex=2,col="orange")
+points(bankData[bankData$A16=="+","A2"],
+		bankData[bankData$A16=="+", "A3"], col="cornflowerblue",pch=18)
+points(bankData[bankData$A16=="-","A2"],
+		bankData[bankData$A16=="-", "A3"], col="orange",pch=20)
+# set up the confusion matrix:
+knn1Model=kknn(formula = A16 ~ A3 + A2, train = bankData, test = bankData, 
+           k=k, kernel="rectangular")
+C= table(bankData$A16, predict(knn1Model))
+print(C)
+print(paste("Error rate:  ", (C[1,2]+C[2,1])/sum(C)))
