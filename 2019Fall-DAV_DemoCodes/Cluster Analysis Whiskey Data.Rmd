@@ -1,0 +1,78 @@
+---
+title: "Cluster Analysis-Whiskey Data"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+### Data Analytics and Visualizqation (Spring 2019)
+### Instructor: Debopriya Ghosh
+
+```{r}
+# Reading the data
+whiskies = read.csv("C:/Users/zhuwe/Desktop/Visualization/Dataset/whiskies.txt")
+whiskies = whiskies[,-1]
+sum(is.na(whiskies))  # no missing observations
+
+```
+```{r}
+# generating a subset of the data that included only the 12 flavor variables, rescaled for comparability 
+whiskies_k = scale(whiskies[,2:13])  # rescale selected vars for kmeans
+head(whiskies_k)
+```
+
+```{r}
+# applying k-means
+ssPlot <- function(data, maxCluster = 9) {
+  # Initialize within sum of squares
+  SSw <- (nrow(data) - 1) * sum(apply(data, 2, var))
+  SSw <- vector()
+  for (i in 2:maxCluster) {
+    SSw[i] <- sum(kmeans(data, centers = i)$withinss)
+  }
+  plot(1:maxCluster, SSw, type = "b", xlab = "Number of Clusters", ylab = "Within groups sum of squares")
+}
+ssPlot(whiskies_k)
+
+```
+Naturally, the within groups sum of squares decreases as we increase the number of clusters. However, there is a trend of diminishing marginal returns as we increase the number of clusters.Select the number of clusters based on the point at which the marginal return of adding one more cluster is less than was the marginal return for adding the clusters prior to that.
+```{r}
+fit <- kmeans(whiskies_k, 4)  # 4 cluster solution 
+```
+
+append cluster assignment
+```{r}
+whiskies <- data.frame(whiskies, fit$cluster)
+whiskies$fit.cluster <- as.factor(whiskies$fit.cluster)
+```
+Cluster centers can inform on how taste profiles differ between clusters.
+```{r}
+fit$centers
+```
+Based on these centers, let us consider that David's choice for the full bodied, 
+smoky and medicinal lies in cluster 4.
+```{r}
+subset(whiskies, fit.cluster == 4)
+```
+Identify the most representative whisky of each cluster by seeking out the observation closest to the center based on all 12 variables.
+```{r}
+whiskies_r <- whiskies[c(2:13, 17)]
+# extract just flavor variables & cluster
+candidates <- by(whiskies_r[-13], whiskies_r[13], function(data) {
+  # we apply this function to observations for each level of fit.cluster
+  dists <- sapply(data, function(x) (x - mean(x))^2)
+  # for each variable, calc each observation's deviation from average of the
+  # variable across observations
+  dists <- rowSums(dists)
+  # for each observation, sum the deviations across variables
+  rownames(data)[dists == min(dists)]
+  # obtain the row number of the smallest sum
+})
+
+candidates <- as.numeric(unlist(candidates))
+
+whiskies[candidates, ]
+
+```
+
+
+

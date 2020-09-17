@@ -1,0 +1,487 @@
+---
+title: "Geospatial Data Visualization using R"
+output: html_notebook
+---
+## Data Analysis and Visualization (Spring 2019)
+### Instructor: Debopriya Ghosh
+
+
+## Spatial Data in R
+
+Loading the required libraries
+
+```{r}
+library(sp)
+library(rgdal)
+library(raster)
+library(rgeos)
+library(plyr)
+library(maptools)
+library(RColorBrewer)
+library(ggmap)
+library(gridExtra)
+library(classInt)
+library(geosphere)
+library(spdep)
+library(gmapsdistance)
+```
+
+## How R sees Spatial Data?
+Just like basic data points, spatial data points are specified by a pair of x-y coordinates.
+
+```{r}
+coordinates <- rbind(c(1.5, 1.25), c(1.75, 1.25), 
+                          c(2.25, 1.25), c(2.5, 1.25), #horizontal
+                         c(2, 1.75), c(2, 1.5), 
+                         c(2, 1), c(2, 0.75), #vertical
+                         c(2, 1.25)) #center
+#points converted into spatial object
+spatialpoints <- SpatialPoints(coordinates) 
+plot(spatialpoints)    
+```
+
+To understand how R sees these points, we can ask use the summary() command. Output show the following:(i) class of the object; (ii) minimum and maximum coordinates; (iii) whether the object is projected or not; (iv) if projected, which coordinate reference system it uses (CRS); (v) total number of points in the data; 
+
+
+```{r}
+summary(spatialpoints)
+```
+
+To reach all the coordinate values use coordinates() command.
+```{r}
+coordinates(spatialpoints)
+```
+
+## Adding Coordinate Reference System
+What we have created is a simple spatial object. We need to convert this SpatialPoints object to geospatial through a Coordinate Reference System (CRS) such that the  coordinates of the points relate to places in real world. CRS combines information on the geographic coordinate system and the projection. The CRS of an object can be found through proj4string() or the summary of the object. NA value means that SpatialPoints does not have a CRS defined yet. We can also use is.projected() command, which will tell you whether a CRS is defined or not.
+```{r}
+is.projected(spatialpoints)
+```
+
+We need to define a CRS so that the spatial object becomes a geospatial object. The CRS can be defined by simply passing the reference code for the projection. We’ll use the most common CRS, EPSG:4326, although there are many other possible reference systems:  CRS("+init=EPSG:4326").
+```{r}
+CRS("+init=EPSG:4326")
+crs.geo <- CRS("+init=EPSG:4326")
+#assign a projection to our data
+proj4string(spatialpoints) <- crs.geo  
+#check it is defined now
+is.projected(spatialpoints) 
+```
+
+This SpatialPoints object doesn’t contain any variables. We can move from a SpatialPoints to a  SpatialPointsDataFrame by adding a data.frame of variables to the points. Here, we will add some randomly generated data. The SpatialPoints will merge with the data.frame based on the order of observations, and therefore the number of spatial points should be equal to the number of rows in the new data.
+```{r}
+vars <- data.frame(vars1 = rnorm(9), vars2 = c(101:109))
+vars
+```
+
+```{r}
+spdf <- SpatialPointsDataFrame(spatialpoints, vars)
+summary(spdf)
+```
+
+Suppose you don’t have a SpatialPoints object but only a data.frame with two columns indicating longitude and latitude values.  SpatialPointsDataFrame object can also be created directly from this data frame. Use coordinates() command to specify which columns contain the coordinates. 
+
+## Spatial Polygons
+
+SpatialPolygons object consists of polygons. To obtain a SpatialPolygons object, we need three steps: (i) First create Polygon objects, two-dimensional geometrical shapes, from points. (ii) Then combine those into Polygons objects (Need to give each polygon a unique ID). (iii) Finally we will combine Polygons into SpatialPolygons.
+
+```{r}
+#create polygon objects from points.
+triangle1 <- Polygon(rbind(c(1, 1), c(2, 1), c(1.5, 0))) 
+triangle2 <- Polygon(rbind(c(1, 1), c(1.5, 2), c(2, 1)))
+
+#create polygons objects from polygon
+t1 <- Polygons(list(triangle1), "triangle1")
+t2 <- Polygons(list(triangle2), "triangle2")
+
+#create spatial polygons object from polygons, equal to shapefiles.
+spatialpolygons <- SpatialPolygons(list(t1, t2))
+plot(spatialpolygons)
+```
+
+As with SpatialPoints, we can add variables to SpatialPolygons. Note that the rownames of the data.frame that includes our variables should match the unique IDs of the polygon objects. Ideally the number of our spatial polygons should be equal to the number of rows in the new data so that we don’t have any missing values in our SpatialPolygonsDataFrame.
+```{r}
+vars <- data.frame(attr1 = 1:2, attr2 = 6:5, 
+                   row.names = c("triangle2", "triangle1"))
+spoldf <- SpatialPolygonsDataFrame(spatialpolygons, vars)
+as.data.frame(spoldf)
+```
+
+```{r}
+spplot(spoldf)
+```
+
+In order the SpatialPoints object to understand how the coordinates of its points relate to places in the real world, we assigned to it a Coordinate Reference System (CRS). We’ll do the same for this SpatialPolygons, using exactly the same method.
+```{r}
+crs.geo <- CRS("+init=EPSG:4326") #geographical, datum WGS84
+proj4string(spoldf) <- crs.geo
+```
+
+## Importing and Exporting Spatial Data
+
+Using existing spatial data by reading them from external sources:
+(a) Shapefiles
+In order to read shapefiles, which will usually be in form of an ESRI shapefile, use readOGR() and writeOGR() commands. readOGR() needs at least the following two arguments: dsn =, path to the folder that contains the files, and layer =, name of the shapefile (without the extension .shp).
+```{r}
+boston <- readOGR(dsn = "~/Dropbox/Priya-PhD- Documents/Courses/Data Analysis and Visualization-Spring 2019/Datasets/BostonData", 
+                  layer = "city_council_districts")
+```
+
+To inspect the shapefile,  use the str command to check what it includes. It will show that boston is actually a combination of  data, coords, bbox, and a proj4string. We can call each single attribute either by the corresponding command or by using the @ command.
+```{r}
+str(boston)
+```
+
+```{r}
+bbox(boston)
+```
+```{r}
+coordinates(boston)[1:5, ]
+```
+```{r}
+as.data.frame(boston)[1:5, ]
+```
+```{r}
+proj4string(boston)
+```
+
+## Combining Spatial Data with Other Data Sources
+### Merging
+
+First, load the elections tabular data.
+```{r}
+boston.elections <- read.csv("~/Dropbox/Priya-PhD- Documents/Courses/Data Analysis and Visualization-Spring 2019/Datasets/BostonData/dist_results.csv")
+```
+
+Now we have i) a SpatialPolygons object named boston, and ii) a data frame called boston.elections, where DISTRICT is the column that contains the unique identifier in boston, and district is the column that contains the unique identifier in boston.elections. We will merge the Spatial object (boston) with other tabular data (boston.elections), using the common unique identifier.
+```{r}
+boston <- merge(boston, boston.elections, 
+                by.x = "DISTRICT", by.y = "District")
+boston@data[1:5, ]
+```
+
+### Spatial Merges
+
+Before merging two Spatial datasets, check whether they have the same CRS. Because both files should agree on which exact point on Earth they refer to with a given value. If you try to merge two spatial objects with a different CRS, results won’t make much sense.
+
+If they don’t have the same CRS, you’ll need to reproject one of your objects. (Reprojecting changes not just the proj4string associated with an object, but also all the actual x and y coordinates.)
+
+Reproject any vector data very simply using the sptransform() command, which will need two inputs: i) the object you want to reproject, and ii) the CRS code you want for your reprojection. 
+
+```{r}
+common.crs <- CRS("+init=EPSG:4326")
+MyCity.reprojected <- spTransform(MyCity, common.crs)
+```
+```{r}
+common.crs <- CRS(proj4string(MyCityB))
+MyCityA.reprojected <- spTransform(MyCityA, common.crs)
+```
+
+So far we have used a common unique identifier to merge, as with the regular datasets. We can also use the geolocation to merge. We are going to work with Boston municipal service requests for graffiti removal.
+
+We already know the geolocation of graffitis but we don’t know in which district of Boston they are located. So we will just overlay the graffitis with our Boston map using the over() command, which will match each graffiti with a district. After the match we’ll combine the two data using the spCbind() command.
+
+Start by loading graffiti data.frame and turning it into a SpatialPointsDataFrame so that R understands that it is a geospatial file. 
+```{r}
+boston.requests <- read.csv("~/Dropbox/Priya-PhD- Documents/Courses/Data Analysis and Visualization-Spring 2019/Datasets/BostonData/graffiti.csv")
+boston.graf <- SpatialPointsDataFrame(coords = cbind(boston.requests$LONGITUDE,
+                                                     boston.requests$LATITUDE),
+                                      data = boston.requests,
+                                      proj4string = CRS("+proj=longlat"))
+
+```
+Next we need to make sure the Boston map has the same projection as our spatial point data frame:
+```{r}
+boston <- spTransform(boston, CRS("+proj=longlat"))
+```
+Now for every graffiti, we want to get information about their district. We will use the over() command. The command basically asks R to return the row number of the observation in Data 2 that intersects with any given observation in Data 1.
+```{r}
+boston.districts <- over(boston.graf, boston) 
+boston.districts[1:5, ]
+```
+
+Note that over only returns the relevant row of Data 2 for each point. If boston did not have any data, we could just get the index of the intersecting polygon for each graffiti. If we just want to know the polygon index, we can use the geometry() command to remove the rest of the  boston.graf data:
+
+```{r}
+boston.districts2 <- over(boston.graf, geometry(boston)) 
+boston.districts2[1:5] 
+```
+
+Finally we use the spCbind() command to merge the two spatial objects.
+```{r}
+boston2 <- spCbind(boston.graf, boston.districts)
+names(boston2)
+```
+
+## Making Maps
+### Making Maps with plot()
+
+Create a very simple plot where we overlay the Boston districts and graffiti locations:
+```{r}
+plot(boston)
+plot(boston.graf, col="blue", cex=0.5, add=T)
+```
+
+### Choropleth maps
+Another useful plotting method is coloring the polygons based on the values in one of the attributes.Example, we can color the districts based on the margin of victories in the city council elections. 
+
+For this we will require to: i) choose n - the number of cuts we want to use, ii) obtain the quantile values that indicate the cutoff points, iii) pick a palette we like from amongst the options available in the brewer.pal() function. Then obtain our color codes using the findColours() function. 
+
+```{r}
+#determine the color codes
+var <- as.numeric(boston$MOV)
+nclr <- 5
+plotclr <- brewer.pal(nclr,"Blues")
+class <- classIntervals(var, nclr, style="quantile")
+colcode <- findColours(class, plotclr)
+```
+
+
+Now you can just pass these color codes to plot():
+```{r}
+plot(boston, col = colcode, border=NA) #remove the borders since looks prettier
+legend(x = "bottomright",
+       fill = attr(colcode,"palette"), #set the legend colors
+       bty = "n", #remove the around the legend
+       legend = names(attr(colcode, "table")), #show the quantile values
+       title = "MOV Quantile",
+       cex = 0.6) #adjust legend size 
+```
+You can choose another color from the RColorBrewer package. You can see a list of all the color pallets that come with RColorBrewer with the following command:
+```{r}
+display.brewer.all()
+```
+We can also add labels to our map using the text() command.et’s make the same plot above with a different color pallet.
+```{r}
+#obtain the new color codes: 
+plotclr <- brewer.pal(nclr,"BuPu")
+colcode <- findColours(class, plotclr)
+
+#plot:
+plot(boston, col = colcode, border=NA) #remove the borders since looks prettier
+legend(x = "bottomright",
+       fill = attr(colcode,"palette"), #set the legend colors
+       bty = "n", #remove the around the legend
+       legend = names(attr(colcode, "table")), #show the quantile values
+       title="MOV Quantile",
+       cex = 0.6)
+```
+We can also add labels to our map using the text() command and indicating the coordinates where we want R to put our labels.
+```{r}
+#store the central point of each polygon, where our labels will appear
+centers = coordinates(boston)
+
+# plot:
+plot(boston, col = colcode, border=NA) #remove the borders for a prettier asthetic. 
+legend(x = "bottomright",
+       fill = attr(colcode,"palette"), #set the legend colors
+       bty = "n", #remove the around the legend
+       legend = names(attr(colcode, "table")), #show the quantile values
+       title="MOV Quantile",
+       cex = 0.6)
+text(centers,label=boston$DISTRICT)
+```
+
+### Making Maps with spplot()
+spplot() is an extension of the plot() function in R specifically for making maps of spatial objects. It’s more convenient for filling in polygon colors based on attributes in the SpatialDataFrame object. You just need to pass the object and the name of columns you want to plot to the function. If you don’t pass specific column names, a separate figure will be created for each column.
+
+```{r}
+spplot(boston,
+       "MOV",
+       main = "Boston Districts", 
+       sub = "Margin of Victory", 
+       col = "transparent") #remove the borders for a prettier asthetic. 
+```
+
+## Extract data from a raster
+
+```{r}
+# load packages
+library(raster)
+library(rasterVis)
+```
+
+User the raster package to read the vegetation data.
+```{r}
+# read potential natural vegetation data sage_veg30.nc:
+vegtype_path <- "~/Downloads/"
+vegtype_name <- "sage_veg30.nc"
+vegtype_file <- paste(vegtype_path, vegtype_name, sep="")
+vegtype <- raster(vegtype_file, varname="vegtype")
+```
+```{r}
+vegtype
+```
+Plot the vegetation data using a rasterVis levelplot:
+```{r}
+mapTheme <- rasterTheme(region=rev(brewer.pal(8,"Greens")))
+levelplot(vegtype, margin=FALSE, par.settings=mapTheme,
+                 main="Potential Natural Vegetation")
+```
+
+## Spatial Data Analysis
+Here, we will focus on how we detect and deal with spatial dependence in regressions models and on basic regression models.
+
+### Assessing Spatial Clustering
+To detect spatial autocorrelation, we will use one informal and one formal method. For this part we will use a new  SpatialPolygonsDataFrame and name it boston_n, which not only includes coordinates and unique ids for polygon units, but also extra columns - some demographic variables from 2000. We can start by loading our data and take a look at the content of the dataset as well as the simple plot.
+```{r}
+boston_n <- readOGR(dsn = "~/Dropbox/Priya-PhD- Documents/Courses/Data Analysis and Visualization-Spring 2019/Datasets/BostonData", 
+                        layer = "Boston_N")
+```
+```{r}
+head(boston_n@data)
+```
+```{r}
+plot(boston_n)
+```
+We are interested in is whether the share of Black and Hispanic population in a neighborhood,a variable named blck_l_ is associated with education attainment, as measured by the percentage of people with at least a bachelor degre, mnmmbchlr. 
+
+First we will check how our dataset looks like and change the column names to clearer names. We can manipulate the data in SpatialPolygonsDataFrame objects exactly as we do in the typical data.frame objects.
+
+```{r}
+names(boston_n)
+```
+```{r}
+names(boston_n)[7:8] <- c("minimumbachelor", "black_lat")
+```
+
+An informal approach to check for spatial autocorrelation. We will run a regression model where we regress education attainment on the share of hispanic and black population, and store the residuals.The idea is if neighboring residuals are similar in size, our model has some spatial autocorrelation. Then we will create a choroplet map, in which neighborhoods with similar-sized residuals will appear in similar shades.
+```{r}
+#save residuals 
+lm.model <- lm(minimumbachelor ~ black_lat, data = boston_n)
+boston_n$resid_ols <- lm.model$residuals
+
+#get the color codes:
+var <- as.numeric(boston_n$resid_ols)
+nclr <- 5
+plotclr <- brewer.pal(nclr,"Blues")
+class <- classIntervals(var, nclr, style = "quantile")
+colcode <- findColours(class, plotclr)
+
+plot(boston_n, col = colcode, border = "grey")
+legend(x = "bottomleft",
+       fill = attr(colcode,"palette"), 
+       bty = "n", 
+       legend = names(attr(colcode, "table")), 
+       title = "OLS Residuals Quantile",
+       cex = 0.6)
+```
+Normally the colors in the map should look arbitrarily distributed. But the autocorrelation map shows similar residual values for neighborhoods spatially close to each other, suggesting that there might be some spatial factors we haven’t specified in our model.
+
+We can do more formal tests of spatial autocorrelation by computing the spatial weight matrix. To compute the spatial weight matrix,first identify the neighborhoods that share edges using the poly2nb() command, and convert it to a matrix using the nb2listw() command. This matrix will also enable us to model the spatial autocorrelation among neighborhoods in our spatial regressions.
+```{r}
+#make continuity NB (neighbors share edges)
+continuity.nb <- poly2nb(boston_n, 
+                         queen = TRUE) #if FALSE, two units are neighbors only if they share a side (not an edge)
+
+summary(continuity.nb) # shows how many links each polygon has, mean connections=5.2
+```
+```{r}
+#plot neighbors
+plot(continuity.nb, coordinates(boston_n))
+```
+
+```{r}
+#convert to a weight-matrix 
+continuity.listw <- nb2listw(continuity.nb,  
+                             style = "W", #for standardized rows
+                             zero.policy = TRUE) 
+#if TRUE, assigns zero to the lags of zones without neighbours
+
+summary(continuity.listw, zero.policy = TRUE) #shows more info with row-standardized weights
+```
+
+```{r}
+head(continuity.listw$weights) #shows the actual weights for each polygon
+
+```
+One formal test of spatial dependence is the Moran’s I, which is easily executed using the moran.test() function and passing the weights created above, as well as the dependent variable we are interested in, to it. We can also observe the spatial dependence on a plot relying on the  moran.plot() command.
+```{r}
+moran.test(boston_n$minimumbachelor, 
+           listw = continuity.listw,
+           zero.policy = TRUE, #if TRUE, assigns zero to the lagged value of zones without neighbours
+           adjust.n = TRUE)#if TRUE, the number of observations is adjusted for no-neighbour observations
+```
+
+```{r}
+moran.plot(boston_n$minimumbachelor, 
+           continuity.listw,
+           zero.policy = TRUE)
+```
+The statistic ranges from -1 to 1, and the stat of 0.798 means it’s significantly spatially correlated.
+
+Calculate local Moran’s I statistics for each polygon rather than just global values. For local Moran’s I statistics, we use the  localmoran() command.
+```{r}
+locmoran.boston_n <- localmoran(boston_n$minimumbachelor, 
+                          continuity.listw, 
+                          zero.policy = TRUE)
+head(locmoran.boston_n)
+```
+```{r}
+boston_n <- spCbind(boston_n, as.data.frame(locmoran.boston_n))
+```
+
+Instead of mapping the residuals as above, we can now map the Z scores in the local Moran’s I test output.
+```{r}
+#get the color codes:
+var <- as.numeric(boston_n$Z.Ii)
+nclr <- 5
+plotclr <- brewer.pal(nclr,"Blues")
+class <- classIntervals(var, nclr, style="quantile")
+colcode <- findColours(class, plotclr)
+
+plot(boston_n, col = colcode, border = "grey")
+legend(x = "bottomleft",
+       fill = attr(colcode,"palette"), 
+       bty = "n", 
+       legend = names(attr(colcode, "table")), 
+       title = "Z Scores Quantile",
+       cex = 0.6)
+```
+Now we can explicitly see that there is spatial dependence among neighborhoods.
+
+## Spatial Regression
+Having detected spatial dependence, we can now take it into account in our regression models. Spatial dependence in a regression setting can be modeled similarly to the autocorrelation in time series. The presence of spatial autocorrelation means a nonzero correlation with the error term, which implies that OLS estimates in the non-spatial model will be biased and inconsistent.
+
+The estimation of the spatial autoregressive model (SAR) can be done with the function lagsarl(). Here we assume normality of the error term and use maximum likelihood. This model will give us the value of rho parameter and its p-value, and allow us comparing it with standard OLS.
+```{r}
+summary(my.model.sar <- lagsarlm(minimumbachelor ~ black_lat, 
+                                 data = boston_n, 
+                                 continuity.listw, 
+                                 zero.policy = TRUE)) 
+```
+
+We can map the new residuals to see if the new model helped with autocorrelation.
+
+```{r}
+boston_n <- spCbind(boston_n, my.model.sar$residuals)
+head(boston_n@data)
+```
+```{r}
+#get the color codes: 
+var <- as.numeric(boston_n$my.model.sar.residuals)
+nclr <- 5
+plotclr <- brewer.pal(nclr,"Blues")
+class <- classIntervals(var, nclr, style="quantile")
+colcode <- findColours(class, plotclr)
+
+plot(boston_n, col = colcode, border = "grey")
+legend(x = "bottomleft",
+       fill = attr(colcode,"palette"), 
+       bty = "n", 
+       legend = names(attr(colcode, "table")), 
+       title = "OLS Residuals Quantile",
+       cex = 0.6)
+```
+
+It looks a bit better.
+
+Alternatively we can model spatial autocorrelation by specifing the autoregressive process in the error term relying on the errorsarlm function:
+```{r}
+#error auto-Regresive
+summary(my.model.ear <- errorsarlm(minimumbachelor ~ black_lat, 
+                                   data = boston_n, 
+                                   continuity.listw, 
+                                   zero.policy = TRUE))
+```
+

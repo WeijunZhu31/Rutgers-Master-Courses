@@ -1,0 +1,254 @@
+---
+title: "Handling Imbalanced Classification Problem"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+## Data Analysis and Visualization
+### Instructor: Debopriya Ghosh
+
+Imbalanced dataset -- data in which the outcome of interest is rare. In rare class problems, the predictive model developed using conventional machine learning algorithms could be biased and inaccurate.This happens because Machine Learning Algorithms are usually designed to improve accuracy by reducing the error and do not take into account the class distribution. 
+
+
+### Challenges faced with Imbalanced datasets
+
+Machine Learning algorithms tend to produce unsatisfactory classifiers when faced with imbalanced datasets. For any imbalanced data set, if the event to be predicted belongs to the minority class and the event rate is less than 5%, it is usually referred to as a rare event.
+
+Example: In an utilities fraud detection data set you have the following data:
+
+Total Observations = 1000
+
+Fraudulent  Observations = 20
+
+Non Fraudulent Observations = 980
+
+Event Rate= 2 %
+
+The main question is - How to get a balanced dataset by getting a decent number of samples for these anomalies given the rare occurrence for some them?
+
+Standard classifier algorithms like Decision Tree and Logistic Regression have a bias towards classes which have number of instances. They tend to only predict the majority class data. The features of the minority class are treated as noise and are often ignored. Thus, there is a high probability of misclassification of the minority class as compared to the majority class.
+
+While working with imbalanced data accuracy is not an appropriate measure to evaluate model performance. For example, a classifier which achieves an accuracy of 98 % with an event rate of 2 % is not accurate, if it classifies all instances as the majority class. And eliminates the 2 % minority class observations as noise.
+
+### Approach to handling Imbalanced Datasets
+Dealing with imbalanced datasets involve strategies such as improving classification algorithms or balancing classes in the training data before providing the data as input to the machine learning algorithm. In the following section we will discuss the strtegies used for balancing classes using resampling strategies.
+
+```{r}
+library(plyr)
+library(ggplot2)
+library(caret)
+bcdata =  read.csv("C:/Users/zhuwe/Desktop/Visualization/Dataset/breast-cancer-wisconsin.data", header=FALSE)
+colnames(bcdata) = c("sample_code_number", 
+                       "clump_thickness", 
+                       "uniformity_of_cell_size", 
+                       "uniformity_of_cell_shape", 
+                       "marginal_adhesion", 
+                       "single_epithelial_cell_size", 
+                       "bare_nuclei", 
+                       "bland_chromatin", 
+                       "normal_nucleoli", 
+                       "mitosis", 
+                       "classes")
+
+bcdata$classes = ifelse(bcdata$classes == "2", "benign",
+                          ifelse(bcdata$classes == "4", "malignant", NA))
+bcdata$classes = factor(as.character(bcdata$classes))
+head(bcdata)
+```
+```{r}
+summary(bcdata)
+
+```
+Lets check the class distribution.
+```{r}
+ggplot(bcdata, aes(x = classes, fill = classes)) +
+  geom_bar()
+```
+
+Randomly divide the data into training and test sets (stratified by class) and perform Random Forest modeling with 10 x 10 repeated cross-validation. Final model performance is then measured on the test set.
+```{r}
+set.seed(42)
+index = createDataPartition(bcdata$classes, p = 0.7, list = FALSE)
+traindata = bcdata[index, ]
+testdata  = bcdata[-index, ]
+
+modelRF = caret::train(classes ~ .,
+                         data = traindata,
+                         method = "rf",
+                         preProcess = c("scale", "center"),
+                         trControl = trainControl(method = "repeatedcv", 
+                                                  number = 10, 
+                                                  repeats = 10, 
+                                                  verboseIter = FALSE))
+
+final = data.frame(actual = testdata$classes,
+                    predict(modelRF, newdata = testdata, type = "prob"))
+final$predict = ifelse(final$benign > 0.75, "benign", "malignant")
+final$predict = factor(final$predict)
+originalCM = confusionMatrix(final$predict, testdata$classes)
+originalCM
+```
+
+### Resampling Techniques
+####  Random Under-Sampling
+Aims to balance class distribution by randomly eliminating majority class examples until the majority and minority class instances are balanced out.
+
+Advantages
+
+- It can help improve run time and storage problems by reducing the number of training data samples when the training data set is huge.
+
+Disadvantages
+
+- It can discard potentially useful information which could be important for building rule classifiers.
+- The sample chosen by random under sampling may be a biased sample. And it will not be an accurate representative of the population. Thereby, resulting in inaccurate results with the actual test data set.
+
+```{r}
+ctrl = trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "down")
+
+modelRF1 = caret::train(classes ~ .,
+                         data = traindata,
+                         method = "rf",
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl)
+finalunder = data.frame(actual = testdata$classes,
+                    predict(modelRF1 , newdata = testdata, type = "prob"))
+finalunder$predict = ifelse(finalunder$benign > 0.75, "benign", "malignant")
+finalunder$predict = factor(finalunder$predict)
+underCM = confusionMatrix(finalunder$predict, testdata$classes)
+underCM
+```
+
+####  Random Over-Sampling
+Over-Sampling increases the number of instances in the minority class by randomly replicating them in order to present a higher representation of the minority class in the sample.
+
+Advantages
+
+- Unlike under sampling this method leads to no information loss.
+- Outperforms under sampling
+
+Disadvantages
+
+- It increases the likelihood of overfitting since it replicates the minority class events.
+```{r}
+ctrl = trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "up")
+
+
+modelRF3 = caret::train(classes ~ .,
+                         data = traindata,
+                         method = "rf",
+                         preProcess = c("scale", "center"),
+                         trControl = ctrl)
+finalover = data.frame(actual = testdata$classes,
+                          predict(modelRF3, newdata = testdata, type = "prob"))
+finalover$predict = ifelse(finalover$benign > 0.75, "benign", "malignant")
+finalover$predict = factor(finalover$predict)
+overCM = confusionMatrix(finalover$predict, testdata$classes)
+overCM
+```
+Besides over- and under-sampling, there are hybrid methods that combine under-sampling with the generation of additional data. Two of the most popular are ROSE and SMOTE.
+
+### ROSE
+```{r}
+library(ROSE)
+ctrl = trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "rose")
+
+
+modelRF4 = caret::train(classes ~ .,
+                              data = traindata,
+                              method = "rf",
+                              preProcess = c("scale", "center"),
+                              trControl = ctrl)
+finalrose = data.frame(actual = testdata$classes,
+                         predict(modelRF4, newdata = testdata, type = "prob"))
+finalrose$predict = ifelse(finalrose$benign > 0.5, "benign", "malignant")
+finalrose$predict = factor(finalrose$predict)
+roseCM = confusionMatrix(finalrose$predict, testdata$classes)
+roseCM
+```
+
+### SMOTE
+SMOTE algorithm finds a record that is similar to the record being upsampled ( using K-Nearest Neighbors) and creates a synthetic record that is a randomly weighted average of the original record and the neighboring record, where the weight is generated separately for each predictor. The number of oversampled records created depends on the oversampling ratio required to bring the data into approximate balance, with respect to outcome classes.
+```{r}
+library(DMwR)
+ctrl = trainControl(method = "repeatedcv", 
+                     number = 10, 
+                     repeats = 10, 
+                     verboseIter = FALSE,
+                     sampling = "smote")
+
+
+modelRF5 = caret::train(classes ~ .,
+                              data = traindata,
+                              method = "rf",
+                              preProcess = c("scale", "center"),
+                              trControl = ctrl)
+```
+
+```{r}
+finalsmote = data.frame(actual = testdata$classes,
+                         predict(modelRF5, newdata = testdata, type = "prob"))
+finalsmote$predict = ifelse(finalsmote$benign > 0.5, "benign", "malignant")
+finalsmote$predict = factor(finalsmote$predict)
+smoteCM = confusionMatrix(finalsmote$predict, testdata$classes)
+smoteCM
+```
+
+### Predictions
+Now let's compare the predictions of all these models:
+```{r}
+models = list(original = modelRF,
+                       under = modelRF1,
+                       over = modelRF3,
+                       smote = modelRF5,
+                       rose = modelRF4)
+
+resampling = resamples(models)
+bwplot(resampling)
+```
+
+```{r}
+library(dplyr)
+comparison = data.frame(model = names(models),
+                         Sensitivity = rep(NA, length(models)),
+                         Specificity = rep(NA, length(models)),
+                         Precision = rep(NA, length(models)),
+                         Recall = rep(NA, length(models)),
+                         F1 = rep(NA, length(models)))
+
+for (name in names(models)) {
+  model = get(paste0(name,"CM"))
+  
+  
+           comparison[comparison$model == name, ]$Sensitivity = model$byClass["Sensitivity"]
+           comparison[comparison$model == name, ]$Specificity = model$byClass["Specificity"]
+           comparison[comparison$model == name, ]$Precision = model$byClass["Precision"]
+           comparison[comparison$model == name, ]$Recall = model$byClass["Recall"]
+           comparison[comparison$model == name, ]$F1 = model$byClass["F1"]
+}
+
+library(tidyr)
+comparison %>%
+  gather(x, y, Sensitivity:F1) %>%
+  ggplot(aes(x = x, y = y, color = model)) +
+    geom_jitter(width = 0.2, alpha = 0.5, size = 3)
+
+```
+
+
+
+ 

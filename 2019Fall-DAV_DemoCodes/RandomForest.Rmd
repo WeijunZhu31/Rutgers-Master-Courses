@@ -1,0 +1,98 @@
+---
+title: "Random Forest"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+The dataset is taken from UCI website and can be found on this link. The data contains 7 variables – six explanatory (Buying Price, Maintenance, NumDoors, NumPersons, BootSpace, Safety) and one response variable (Condition). All the variables are categorical in nature and have 3-4 factor levels in each.
+
+
+```{r}
+library(randomForest)
+# Load the dataset and explore
+carsData <- read.table("C:/Users/zhuwe/Desktop/Visualization/Dataset/car.data.txt", sep= ',',header = F)
+colnames(carsData) = c('BuyingPrice','Maintenance','NumDoors','NumPersons','BootSpace','Safety','Condition')
+head(carsData)
+str(carsData)
+summary(carsData)
+```
+
+Implement multiple Random Forest models with different hyper parameters. Split the dataset into train and validation set in the ratio 70:30. We can also create a test dataset, but for the time being we will just keep train and validation set.
+```{r}
+set.seed(1)
+train <- sample(nrow(carsData), 0.7*nrow(carsData), replace = FALSE)
+TrainSet <- carsData[train,]
+ValidSet <- carsData[-train,]
+summary(TrainSet)
+summary(ValidSet)
+```
+
+We will create a Random Forest model with default parameters and then fine tune the model by changing ‘mtry’. We can tune the random forest model by changing the number of trees (ntree) and the number of variables randomly sampled at each stage (mtry). 
+
+Ntree: Number of trees to grow. This should not be set to too small a number, to ensure that every input row gets predicted at least a few times.
+
+Mtry: Number of variables randomly sampled as candidates at each split. The default values are different for classification (sqrt(p) where p is number of variables in x) and regression (p/3).
+
+```{r}
+rfmodel.1 <- randomForest(Condition ~ ., data = TrainSet, importance = TRUE)
+rfmodel.1
+
+# Fine tuning parameters of Random Forest model
+rfmodel.2 <- randomForest(Condition ~ ., data = TrainSet, ntree = 500, mtry = 6, importance = TRUE)
+rfmodel.2
+```
+
+By default, number of trees is 500 and number of variables tried at each split is 2 in this case. Error rate is 3.7%.When we have increased the mtry to 6 from 2, error rate has reduced from 3.7% to 2.4%. Now predict on the train dataset first and then predict on validation dataset.
+```{r}
+# Predicting on train set
+predTrain <- predict(rfmodel.2, TrainSet, type = "class")
+# Checking classification accuracy
+table(predTrain, TrainSet$Condition) 
+# Predicting on Validation set
+predValid <- predict(rfmodel.2, ValidSet, type = "class")
+# Checking classification accuracy
+table(predValid,ValidSet$Condition)
+mean(predValid == ValidSet$Condition) 
+```
+
+In case of prediction on train dataset, there is zero misclassification; however, in the case of validation dataset, 6 data points are misclassified and accuracy is 97.88%. 
+
+We can also check important variables. The below functions show the drop in mean accuracy for each of the variables.
+```{r}
+importance(rfmodel.2)        
+varImpPlot(rfmodel.2)   
+```
+
+Use ‘for’ loop and check for different values of mtry.
+```{r}
+accuracy=c()
+
+for (i in 3:8) {
+  rfmodel.3 <- randomForest(Condition ~ ., data = TrainSet, ntree = 500, mtry = i, importance = TRUE)
+  predValid <- predict(rfmodel.3, ValidSet, type = "class")
+  accuracy[i-2] = mean(predValid == ValidSet$Condition)
+}
+ 
+accuracy
+```
+Compare with decision tree
+```{r}
+# Compare with Decision Tree
+library(rpart)
+library(caret)
+library(e1071)
+# We will compare model 1 of Random Forest with Decision Tree model
+ 
+dtmodel = train(Condition ~ ., data = TrainSet, method = "rpart")
+dtpred = predict(dtmodel, data = TrainSet)
+table(dtpred, TrainSet$Condition)
+mean(dtpred == TrainSet$Condition)
+
+# Running on Validation Set
+dtpred.vs = predict(dtmodel, newdata = ValidSet)
+table(dtpred.vs, ValidSet$Condition)
+ 
+mean(dtpred.vs == ValidSet$Condition)
+```
+
+On training set we obtain 79.48% accuracy. On validation set we get 78.4%

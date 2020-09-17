@@ -1,0 +1,140 @@
+---
+title: "Classification"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+## Logistic Regression 
+Response in the logistic regression formula is the log odds of a binary outcome of 1. We only observe the binary outcome, not the log odds, so special statistical methods are needed to fit the equation. Logistic regression is a special instance of generalized linear model (GLM) developed to extend linear regression to other settings.
+
+In R, to fit a logistic regression, glm function is used with family set to "binomial". The following code fits a logistic regression to the personalloan data.
+```{r}
+loan_data = read.csv("C:/Users/zhuwe/Desktop/Visualization/Dataset/loan_data.csv", header=TRUE)
+head(loan_data)
+
+```
+
+```{r}
+logistic_model = glm(outcome ~ payment_inc_ratio + purpose_ + home_ + emp_len_ + borrower_score, data = loan_data, family = 'binomial' )
+logistic_model
+```
+
+The response is outcome, which takes a 0 if the loan is paid off and 1 if the loan defaults. purpose_ and home_ are factor variables representing the purpose and the home ownership status. As in regression, a factor variable with P levels is represented using P-1 columns. By default, reference coding is used and the levels are all compared to the refernce level. The reference level for these factors are credit_card and MORTGAGE respectively. The variable borrower_score is a score from  0 to 1 (poor to excellent) representing the creditworthiness of the borrower.
+
+## Generalized Linear Models
+GLMs are characterized by two main components:
+- A probability distribution or family (binomial in case of logistic regression)
+- A link function mapping the response to the predictors (logit in case of logistic regression)
+
+Logistic regression is the most common form og GLM. Sometimes log link function is used instead of logit.Poisson distribution is used to model count data (number of times user visit a web pge in certain amount of time). Other families include negative binomial and gamma (often used to model elapsed time).
+
+
+### Predicted Values from Logistic Regression
+The predicted value from logistic regression is in terms of log odds. $\hat Y = log(Odds(Y=1))$. 
+```{r}
+pred = predict(logistic_model)
+summary(pred)
+```
+Converting these values to probabilities
+```{r}
+prob = 1/(1 + exp(-pred))
+summary(prob)
+```
+
+
+These are on a scale from 0 to 1 and don't indicate whether the predicted value is default or paid off. We could declare any value greater than 0.5 as default. A lower cutoff is often appropriate if the goal is to identify members of a rare class.
+
+### Interpreting the Coefficients and Odds Ratios
+
+Odds ratio is guven by --
+$odds ratio = \frac{Odds(Y=1|X=1)}{Odds(Y=1|X=0)}
+
+This is interpreted as the odds that Y=1 when X=1 versus the odds that Y=1 when X=0. If the odds ratio is 2, then the odds that Y=1 are two times higher when X=1 versus X=0.
+
+We work wit odds because the coeffcient $\beta_j$ in the logistic regression is the log of the odds ratio for $X_j$.
+
+
+### Assessing the Model
+
+Logistic regression is assessed by how accurately the model classifies new data. 
+```{r}
+summary(logistic_model)
+```
+Interpretation of p-value comes with the same caveat as in regression, and should be viewed more as a relative indicator of variable importance than a formal measure of statistical significance. Logistic regression model, which has a binary rfesponse, does not have an associated RMSE or R-squared. Logistic regression model is typically evaluated using more general metrics for classification.
+
+Fit generalized additive model using "mgcv" package.
+```{r}
+library(mgcv)
+logistic_gam = gam(outcome~ s(payment_inc_ratio)+ purpose_ + home_ + emp_len_ + s(borrower_score), data = loan_data, family = "binomial")
+```
+One area where logistic regression differs from linear regression is in the analysis of residuals.
+```{r}
+terms = predict(logistic_gam, type = "terms")
+partial_resid = resid(logistic_model) + terms
+df = data.frame(payment_inc_ratio = loan_data[,'payment_inc_ratio'],
+                terms = terms[,'s(payment_inc_ratio)'],
+                partial_resid = partial_resid[,'s(payment_inc_ratio)'])
+ggplot(df, aes(x = payment_inc_ratio, y = partial_resid, solid = FALSE)) +
+  geom_point(shape = 46, alpha = .4)+
+  geom_line(aes(x = payment_inc_ratio, y = terms), color ='red' , alpha = 0.5, size = 1.5) + labs(y = "Partial residual")
+```
+The estimated fit, shown by the line goes between two sets of point clouds. The top cloud correponds to a response of 1 (defaulted loans), and bottom cloud corresponds to a response of 0 (loans paid off). This is typical of residuals from a logistic regression since the output is binary. Partial residuals in logistic regression are useful to confirm non linear behavior and identify highly influential records.
+
+### Evaluating Classification Models
+Applying holdout set approach
+```{r}
+# Random sample indexes
+train_index = sample(1:nrow(loan_data), 0.75 * nrow(loan_data))
+test_index = setdiff(1:nrow(loan_data), train_index)
+
+# Build train and test sets
+train_set = loan_data[train_index, ]
+test_set = loan_data[test_index, ]
+
+fit_glm = glm(outcome ~ payment_inc_ratio + purpose_ + home_ + emp_len_ + borrower_score, data = loan_data, family=binomial(link="logit"))
+
+glm_link_scores = predict(fit_glm, test_set, type="link")
+
+glm_response_scores = predict(fit_glm, test_set, type="response")
+
+```
+
+#### Confusion Matrix
+```{r}
+pred = predict(fit_glm, newdata = test_set)
+pred_y = as.numeric(pred > 0)
+true_y =  as.numeric(test_set$outcome == "default")
+true_pos = (true_y == 1) & (pred_y == 1)
+true_neg = (true_y == 0) & (pred_y == 0)
+false_pos = (true_y == 0) & (pred_y == 1)
+false_neg = (true_y == 1) & (pred_y == 0)
+conf_mat = matrix(c(sum(true_pos),sum(false_pos),
+                    sum(false_neg),sum(true_neg)),2,2)
+colnames(conf_mat) = c('Yhat = 1' ,'yhat = 0')
+rownames(conf_mat) = c('Y = 1', 'Y = 0')
+conf_mat
+```
+```{r}
+#precision 
+precision = conf_mat[1,1]/sum(conf_mat[,1])
+precision
+#recall
+recall = conf_mat[1,1]/sum(conf_mat[1,])
+recall
+#specificity
+specificity = conf_mat[2,2]/sum(conf_mat[2,])
+specificity
+#FPR = 1 - specificity
+```
+
+Plot ROC Curve
+```{r}
+library(pROC)
+plot(roc(true_y, pred_y),
+     col="yellow", lwd=3, main="The turtle finds its way")
+```
+
+
+
+
