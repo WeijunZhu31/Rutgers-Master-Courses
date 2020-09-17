@@ -1,0 +1,253 @@
+---
+title: "hw04-02"
+author: "Weijun Zhu"
+date: "December 5, 2019"
+output: pdf_document
+toc: yes
+---
+```{r}
+library(tidyverse)
+library(rjson)
+library(jsonlite)
+library(caret)
+library(e1071)
+set.seed(9)
+```
+
+# 2.
+R/Python Project: We continue with the movie data set you used in the previous homework.
+
+## 2a).
+Read the original data into movieDat as you did in the previous homework. The column under
+the genres is in the JSON format (check Wikipedia to get familiar with this simple format.)
+Each movie may belong to several genres. You must parse this column for all movies, collect
+the set of all available genres, and for each one create a new binary feature whose name starts
+with genre_. So after this pre-processing you should have new features such as genre Action,
+genre Adventure etc. Since the format in which the genres are stored in this data set is JSON,
+you may wish to look into the relevant libraries in R and Pythos. In R you may wish to look at
+libraries rjson and litejson for utilities working with JSON format. In Python import json
+will load the necessary library items. See this page for more information on Python. Of course,
+you could ignore the JSON libraries and use direct string processing to extract genre names, but
+this may be more time-consuming. (For now ignore the other JSON features in the data.)
+```{r}
+movieDat <- read.csv('C:/Users/zhuwe/Desktop/书籍_资料/2019_Fall/ML/ML_Homework/hw_code/data/tmdb_5000_movies.csv',
+                     header = T)
+head(movieDat)
+glimpse(movieDat)
+```
+
+Create new binary new features, but the new features start with "genre_" are hard to create, so I just keep the genre names. Then I set the genres for each movie.
+```{r}
+k = 1
+for (i in movieDat$genres) {
+  json_file <- as.character(movieDat$genres[i])  # change "genres" to string
+  temp <- jsonlite::fromJSON(i)
+  for (j in temp["name"]) {
+    movieDat[k,j] <- 1
+  }
+  k = k + 1
+}
+head(movieDat)
+rm(k)
+```
+
+"1" represents that this movie belonges to the genre, and "0" represents that this movie doesn't belong to the genre.
+```{r}
+movieDat[is.na(movieDat)] <- 0
+head(movieDat)
+```
+
+
+## 2b).
+As in the previous homework, extract only the numerical features and save it in the data frame
+nmovieDat. However, add all columns you generated in part a) for genres to nmovieDat. Finally,
+create a new column called profit which is revenue minus budget. Compute this column and
+add it to the nmovieDat.
+```{r}
+nmovieDat <- movieDat %>%
+  dplyr::select_if(is.numeric) %>%  # select the numeric columns
+  dplyr::select(-id)  # Drop the the column of "id"
+head(nmovieDat)
+```
+
+## 2c).
+Once you create the nmovieDat data frame, divide the data into two groups of training and test
+sets. Choose, randomly 80% of the data and put them in a data frame called nmovieDatTrain.
+Put the remainder in a data frame called nmovieDatTest.
+```{r}
+trainIndex <- sample(nrow(nmovieDat), 0.8*nrow(nmovieDat))
+nmovieDatTrain <- nmovieDat[trainIndex,]  # Traning Set
+nmovieDatTest <- nmovieDat[-trainIndex,]  # Test Set
+```
+
+## 2d).
+Build a linear regression model called lmmodel1 relating profit to only the numerical features
+(except budget and revenue, of course.) What is the percentage of variation in profit explained
+by lmmodel1?
+```{r}
+nmovieDatModel <- nmovieDat %>%
+  mutate(profit = revenue - budget) %>%  # create a new feature named "profit"
+  select(-budget,-revenue)
+
+lmmodel1 <- lm(profit ~., data=nmovieDatModel)
+summary(lmmodel1)
+```
+Conclusion: R-square equals 0.6069. That means 60.49 percent of variance in profit explained
+by lmmodel1. 
+
+## 2e).
+Now build a linear regression model called lmmodel2 relating profit to all features of nmovieDatTrain. What percentage of the variation in profit is described by lmmodel2?
+```{r}
+nmovieDatTrain <- nmovieDatTrain %>%
+  mutate(profit = revenue - budget) %>%  # create a new feature named "profit"
+  select(-budget,-revenue)
+  
+lmmodel2 <- lm(profit ~., data=nmovieDatTrain)
+summary(lmmodel2)
+```
+Conclusion: R-square equals 0.6049. That means 60.49 percent of variance in profit described
+by lmmodel2. 
+
+
+# 3.
+For this assignment we are going to test the binary classifications using SVM (for various kernels) and the logistic regression.
+
+## 3a).
+Create a new feature called incomeGenre. The idea is we are going to lump together genres that
+tend to generate more revenue into one group and the rest into another. Under incomeGenre
+column put a "1" if the movie belongs to two or more of genres from the set: Action, Adventure,
+Fantasy, Science Fiction, Crime, Drama, Thriller, Horror. Make sure to make this new
+feature a categorical variable.
+```{r}
+# Then I choose the specified columns, and create a temp dataframe to store these columns.
+genreDf <- nmovieDat %>%
+  select(Action, Adventure, Fantasy, 'Science Fiction', Crime, Drama, Thriller, Horror)
+
+# Create the new column 'incomeGenre' with values
+for (i in seq(dim(genreDf)[1])) {
+  if (rowSums(genreDf)[i] >= 2) {
+    nmovieDat[i,'incomeGenre'] = 1
+  } else {
+    nmovieDat[i,'incomeGenre'] = 0
+  }
+}
+df <- nmovieDat %>%
+  select(budget,popularity,revenue,runtime,vote_average,vote_count,incomeGenre)
+```
+
+## 3b).
+Run the logistic regression modeling incomeGenre as a function of all numerical features (six
+in total). Use only the training data for this purpose, that is use only the same rows in the
+nmovieDat data frame. Name this model logitModel1. Print a summary of the model.
+```{r}
+# Splict the training data and test data
+trainIndex <- sample(nrow(df), 0.8*nrow(df))
+nmovieDatTrain <- df[trainIndex,]  # Traning Set
+nmovieDatTest <- df[-trainIndex,]  # Test Set
+```
+
+```{r}
+logitModel1 <- glm(incomeGenre ~., data = nmovieDatTrain, family=binomial(link='logit'))
+summary(logitModel1)
+```
+
+## 3c).
+Now predict this model on the test set, that is the data in nmovieDatTest. Compute and print
+the confusion table and classification error rate.
+```{r}
+logitModel1_pred <- predict(logitModel1,nmovieDatTest)
+
+# Confusion Matrix
+confusionTable <- table(ifelse(logitModel1_pred > 0,1,0),nmovieDatTest$incomeGenre)
+confusionTable
+
+# Classification Error Rate
+cat('The ERROR RATE is: ')
+1 - sum(diag(confusionTable))/sum(confusionTable)
+```
+
+## 3d).
+Compute the BIC value of this model. In R you may use the AIC() function. You must supply
+the model and k = ln(N) where N is the number of data points.
+```{r}
+# BIC
+cat("BIC Index: ")
+BIC(logitModel1)
+
+# AIC
+cat("AIC Index: ")
+AIC(logitModel1, k=log(dim(nmovieDatTrain)[1]))
+```
+
+## 3e).
+Repeat parts 3b-3d, but this time use cross product B-Splines with df=6. Based on the BIC
+value, does the cross product model improve over the linear model?
+```{r}
+library(splines)
+# B-Splines with df = 6
+nlogitModel <- glm(incomeGenre ~ bs(budget,df=6)*bs(popularity,df=6)*bs(revenue,df=6)*bs(runtime,df=6)*bs(vote_average,df=6)*bs(vote_count,df=6), family=binomial, data=nmovieDatTrain)
+summary(nlogitModel)
+```
+
+```{r}
+nlogitModel_pred <- predict(nlogitModel,nmovieDatTest)
+
+# Confusion Matrix
+confusionTable <- table(ifelse(nlogitModel_pred > 0,1,0),nmovieDatTest$incomeGenre)
+confusionTable
+
+# Classification Error Rate
+cat('The ERROR RATE is: ')
+1 - sum(diag(confusionTable))/sum(confusionTable)
+```
+
+```{r}
+# BIC
+cat("BIC Index: ")
+BIC(nlogitModel)
+```
+Conclusion: Sorry, my computer doesn't run the cross product, and it took one hour and didn't finish. So I can not get the results of cross produc of B-Splines. But if the BIC index of nlogitModel is bigger than previous one, it will be worser. But if BIC index of nologitModel is smaller than previous one, it will be better.
+
+## 3f).
+Repeat parts 3b-3c, but this time use an SVM model with polynomial kernel and degree 4.
+```{r}
+library(e1071)
+svmModel <- svm(nmovieDatTrain$incomeGenre ~., data=nmovieDatTrain, kernel='polynomial',
+                degree=4)
+summary(svmModel)
+```
+
+```{r}
+svmModel_pred <- predict(svmModel,nmovieDatTest)
+
+# Confusion Matrix
+confusionTable <- table(ifelse(svmModel_pred > 0,1,0),nmovieDatTest$incomeGenre)
+confusionTable
+
+# Classification Error Rate
+cat('The ERROR RATE is: ')
+1 - sum(diag(confusionTable))/sum(confusionTable)
+```
+
+## 3g).
+Repeat parts 3b-3c, but this time use an SVM model with radial basis kernel.
+```{r}
+svmModel1 <- svm(nmovieDatTrain$incomeGenre ~., data=nmovieDatTrain, kernel='radial')
+summary(svmModel)
+```
+
+```{r}
+svmModel_pred1 <- predict(svmModel1,nmovieDatTest)
+
+# Confusion Matrix
+confusionTable <- table(ifelse(svmModel_pred1 > 0,1,0),nmovieDatTest$incomeGenre)
+confusionTable
+
+# Classification Error Rate
+cat('The ERROR RATE is: ')
+1 - sum(diag(confusionTable))/sum(confusionTable)
+```
+
+
+
+

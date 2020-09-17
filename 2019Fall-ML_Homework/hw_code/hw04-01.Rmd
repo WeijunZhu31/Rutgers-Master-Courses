@@ -1,0 +1,225 @@
+---
+title: "hw04-01"
+author: "Weijun Zhu"
+date: "December 4, 2019"
+output: pdf_document
+toc: yes
+---
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+# 1.
+R/Python Project: We wish to examine the relation between price and sales of two editions of
+a textbook. The two editions are hard cover and paperback. The paperback has a blue cover, and
+the hardcover version an orange one. Each data item is collected from a different bookstore. Each bookstore can carry only one of either paperback and hardcover versions of the text. The data contains the amount of weekly sales from bookstore across country, the price at which the text was sold, and the type(paperback or hardcover).
+
+## 1a).
+Read the file textbookSales.csv and put it in the data frame called priceData. Plot the scatter plot of the data, coloring paperback points blue and hardcover points orange.
+```{r}
+priceData <- read.csv('./data/textbookSales.csv', header = T)
+```
+
+```{r}
+head(priceData)
+```
+
+```{r}
+graph1 <- ggplot(priceData, aes(x = sales, y = price)) +
+  geom_point(aes(color = factor(edition))) +
+  scale_color_manual(breaks = c('paperback','hardcover'), values = c('blue','orange'))
+graph1
+```
+
+## 1b).
+Assuming the relationship between price and sales is linear for both editions, set up a linear
+model with sales as the target (response) variable, and price and edition as the independent
+variables. Call the linear models modelA. Print a summary of the model.
+```{r}
+# # The 1st way to factorize:
+# priceData$edition <- as.factor(priceData$edition)
+# priceData$edition <- as.numeric(priceData$edition)
+# # "2" represents "paperback", and "1" represents "hardcover"
+
+# The 2nd way to factorize:
+priceData$edition <- factor(priceData$edition, 
+                            levels=c("hardcover","paperback"), labels=c(1,2))
+priceData$edition <- as.numeric(priceData$edition)
+```
+
+```{r}
+modelA <- lm(sales ~ price + edition, data=priceData)
+summary(modelA)
+```
+
+## 1c).
+How much of the variation in sales is determined by this model?
+
+Answer: R-squared looks good. From previous problem, we can see both of price and sales are significant, and the p-value are really small. We can say sales determine this model much.
+
+## 1d).
+What is the relationship between price and sales for the hardcover edition, and what is this
+relationship for the paperback version? Extract this information from the model you derived in question 1b.
+```{r}
+# "2" represents "paperback", and "1" represents "hardcover"
+hardcover <- priceData %>% 
+  filter(edition==1)
+
+modelB <- lm(edition ~ price + sales, data=hardcover)
+summary(modelB)
+```
+
+```{r}
+# "2" represents "paperback", and "1" represents "hardcover"
+paperback <- priceData %>% 
+  filter(edition==2)
+
+modelC <- lm(edition ~ price + sales, data=paperback)
+summary(modelC)
+```
+Answer: Whatever paperback or hardcover, We can see p-values of both of price and sales are big, and they are not significant. So there are no relationships between price and sales for the hardcover and paperback edition,
+
+
+## 1e).
+A bookstore reports sales of 123 copies of the text at the price of 142, but the edition is not
+reported. According to the Bayes rule which edition is more likely to have been sold by this
+bookstore? Clearly Justify your answer.
+```{r}
+table(priceData$edition)
+```
+
+```{r}
+# add a line which value of price equal 142
+graph1 + 
+  geom_hline(yintercept=142, linetype="dashed", color="red", size=1.5)
+```
+We can not get any information from above graph, so we should do further.Then I plot the density graph.
+
+```{r}
+# "2" represents "paperback", and "1" represents "hardcover"
+# Rename legend labels and change the order of items
+ggplot(priceData, aes(x=price, fill=factor(edition)))+
+  geom_density(alpha=0.4)+
+  # Change the order of legend items: scale_x_discrete()
+  # Edit legend title and text labels: scale_fill_discrete()
+  scale_x_discrete(limits=c("2", "1"))+
+  scale_fill_discrete(name = "edition", labels = c("paperback", "hardcover"))+
+  geom_vline(aes(xintercept=142), color="red", linetype="dashed")+
+  annotate(geom="text", x=150, y=0.015, label="142",color="red")
+```
+Conclusion: We can see at price of 142, the more likely is hardcover which is represented by 1 in above graph.
+
+# 1f).
+Now suppose the data were presented to you without the information about which edition was
+sold. You are to use the Expectation-Maximization technique to separate the set of books. We
+assume that we know there are two types of books, but pretend we do not know price/sales data
+corresponds to which edition. The objective is to use the EM algorithm to figure this out. Here
+is the outline of the EM algorithm in this case. The instructions are for R users; for Python,
+figure out the equivalent procedure:
+
+1. In R make sure you have installed the EMCluster package (Figure out what the equivalent
+package is in Python.)
+
+2. Use the init.EM function to initialize the EM process. As the input matrix you should pass
+the two-column matrix made up of price and sales data of pricedata (so no information
+about the edition feature is passed to EMcluster functions.) Save the output of init.EM in
+an object called em1.
+
+3. Using em1 run the emcluster function to estimate the latent variable. Assign the output of
+the emcluster function to an object called em.
+
+4. Use the assign.class function, and again pass the price and sales columns of pricedata
+as a matrix. Assign the output to an object called c.
+
+5. Plot the scatter plot of pricedata, price vs sales, but this time color with respect to classes
+produced by the assign.class function in c.
+
+6. Using the table function compare the classes produced by the EM method and the original
+classes in the Edition column of pricedata. How many are misclassified? What is the
+misclassification rate?
+
+7. Run the linear regression model again, but this time instead of edition use the classes pro-
+duced by the EM algorithm, and stored in c. Compare the slope and intercept for each class,
+with the slope and intercept for the original classes paperback and hardcover.
+
+### Answer: step by step
+1. In R make sure you have installed the EMCluster package (Figure out what the equivalent
+package is in Python.)
+```{r}
+library(EMCluster)
+```
+
+2. Use the init.EM function to initialize the EM process. As the input matrix you should pass
+the two-column matrix made up of price and sales data of pricedata (so no information
+about the edition feature is passed to EMcluster functions.) Save the output of init.EM in
+an object called em1.
+```{r}
+priceDataEM <- priceData %>%
+  # There is a conflict between EMcluster and tidyverse.
+  dplyr::select(-edition) # select the columns except the "edition"
+  
+em1 <- init.EM(priceDataEM,nclass=2)
+```
+
+3. Using em1 run the emcluster function to estimate the latent variable. Assign the output of
+the emcluster function to an object called em.
+```{r}
+em <- emcluster(priceDataEM,em1)
+```
+
+4. Use the assign.class function, and again pass the price and sales columns of pricedata
+as a matrix. Assign the output to an object called c.
+```{r}
+c<-assign.class(priceDataEM,em)
+```
+
+5. Plot the scatter plot of pricedata, price vs sales, but this time color with respect to classes
+produced by the assign.class function in c.
+```{r}
+plot(priceDataEM[c$class==1,1],priceDataEM[c$class==1,2],pch=20,col="blue",
+          xlab="x",ylab="y", 
+          xlim=c(min(priceDataEM[,1]),max(priceDataEM[,1])),
+          ylim=c(min(priceDataEM[,2]),max(priceDataEM[,2])))
+points(priceDataEM[c$class==2,1],priceDataEM[c$class==2,2],pch=20,col="red")
+points(priceDataEM[c$class==3,1],priceDataEM[c$class==3,2],pch=20,col="maroon")
+```
+
+6. Using the table function compare the classes produced by the EM method and the original
+classes in the Edition column of pricedata. How many are misclassified? What is the
+misclassification rate?
+```{r}
+print('Original dataset: ')
+table(priceData$edition)
+cat('\n\n')
+
+print('EM method: ')
+table(c$class)
+```
+Conclusion: There are 114 values misclassified. The misclassification rate is 0.228.
+
+7. Run the linear regression model again, but this time instead of edition use the classes pro-
+duced by the EM algorithm, and stored in c. Compare the slope and intercept for each class,
+with the slope and intercept for the original classes paperback and hardcover.
+```{r}
+priceDataEM['edition'] <- c$class
+modelC <- lm(c$class ~ sales + price, data=priceDataEM)
+summary(modelC)
+```
+
+```{r}
+hardcoverEM <- priceDataEM %>%
+  filter(edition==1)
+
+modelD <- lm(edition ~ price + sales, data=hardcoverEM)
+summary(modelD)
+```
+
+```{r}
+paperbackEM <- priceDataEM %>%
+  filter(edition==2)
+
+modelD <- lm(edition ~ price + sales, data=paperbackEM)
+summary(modelD)
+```
+Conclusion: Intercepts of both of the paperback and hardcover do not change. The slops change smaller after we use EM method. 

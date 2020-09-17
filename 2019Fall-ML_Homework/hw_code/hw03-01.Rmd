@@ -1,0 +1,150 @@
+---
+title: "hw03_01"
+author: "Weijun Zhu"
+date: "November 12, 2019"
+output: pdf_document
+toc: yes
+---
+```{r}
+library(tidyverse)
+```
+
+## 1a).
+Download the zip file that contains the data. Using R data frames, or Python pandas, transform
+this datset into a data frame. In doing so you need to perform the following filtering and cleaning
+of the data:
+- Unzip the data, and read into a data frame called movieDat
+- For this homework we need only those features which are numerical. Create a new data
+frame called nmovieDat and copy only columns of movieDat which are numerical in it.
+Once you have prepared the nmovieDat data frame, print the head and tail to make sure you
+have read everything correctly.
+```{r}
+# movieDat <- read.csv('C:/Users/zhuwe/Desktop/ML/ML_Homework/hw_code/data/tmdb_5000_movies.csv',
+#                        header = TRUE, sep = ',', fill = TRUE, na.strings=c("", "NA"))
+
+movieDat <- read_csv('C:/Users/zhuwe/Desktop/ML/ML_Homework/hw_code/data/tmdb_5000_movies.csv',
+                     na="")
+```
+
+```{r}
+movieDat <- as.data.frame(movieDat)
+```
+
+```{r}
+str(movieDat)
+```
+
+```{r}
+nmovieDat <-  movieDat %>%
+  select(id, budget, popularity, revenue, runtime, vote_average, vote_count)
+nmovieDat <- na.omit(nmovieDat)
+```
+
+```{r}
+head(nmovieDat)
+tail(nmovieDat)
+```
+
+## 1b).
+Find the mean, variance and standard deviation of each numerical feature and print your results. Comment on whether it is wise to do a scaling of the data before running any type of clustering or not.
+```{r}
+print('budget:')
+mean(nmovieDat$budget)
+var(nmovieDat$budget)
+sd(nmovieDat$budget)
+
+print('popularity:')
+mean(nmovieDat$popularity)
+var(nmovieDat$popularity)
+sd(nmovieDat$popularity)
+
+print('revenue')
+mean(nmovieDat$revenue)
+var(nmovieDat$revenue)
+sd(nmovieDat$revenue)
+
+print('runtime')
+mean(nmovieDat$runtime)
+var(nmovieDat$runtime)
+sd(nmovieDat$runtime)
+
+print('vote_average:')
+mean(nmovieDat$vote_average)
+var(nmovieDat$vote_average)
+sd(nmovieDat$vote_average)
+
+print('vote_count:')
+mean(nmovieDat$vote_count)
+var(nmovieDat$vote_count)
+```
+We need to do scaling of the data, because variables of the data have the huge different size. Like if we do not scaling the data, when we use Gradient Decent Algorithm, it hard to get optimization.
+
+## 1c).
+Now apply the principal component analysis on the data using prcomp in R (or the equivalent in Python.) Based on your response on part 1b) above decide whether the option scale should be true or false. Save the output of prcomp in an object called usarrests.pca To see the components of this object, use the names function and see what information is in it. Print the result. Extract the center and scale. Explain why these values are different (or the same as) the mean and variances above.
+```{r}
+nmovies.pca <- prcomp(nmovieDat, retx = TRUE, na.action=na.omit, scale=TRUE)
+```
+
+```{r}
+names(nmovies.pca)
+```
+
+```{r}
+print(nmovies.pca$center)
+print(nmovies.pca$scale)
+```
+
+## 1d).
+Print the rotation matrix.
+rotation: The matrix of variable loadings (i.e., a matrix whose columns contain the eigenvectors). The function princomp returns this in the element loadings.
+```{r}
+nmovies.pca$rotation
+```
+
+## 1e).
+Extract the standard deviation of the principal components, these are the singular values of the data matrix. Verify this by using matrix operations (svd, matrix multiplication, etc.)
+```{r}
+summary(nmovies.pca)
+```
+
+```{r}
+# From the documentation of prcomp, we can get: 
+# sdev: the standaed deviations of principal components(i.e., the square roots of the eigenvalues of the covariance/correlation matrix)
+sqrt(eigen(cor(nmovieDat))$values)
+```
+Then I try to use matrix multiplication to figure out the standard deviation og the principal components.
+```{r}
+x = as.matrix(nmovieDat)  # set the data as matrix
+c=(t(x)%*%x)/(dim(x)[1]-1) 
+```
+
+```{r}
+svd(c)
+```
+
+```{r}
+principalComponent = x%*%svd(c)$u
+```
+
+```{r}
+for (i in seq(dim(principalComponent)[2])) {
+  cat("The", i, "of standard deviation of principal component is: ")
+  print(sd(principalComponent[,i]))
+}
+```
+
+## 1f).
+Print and graph the contribution of each principal component by graphing their variance (from the highest to lowest). You may use the screeplot function in R, see its documentation. Do you think it would be justified to keep all four features, or would it be wise to drop one or more?
+Justify your answer.
+```{r}
+screeplot(nmovies.pca, labels=TRUE)
+```
+Conclusion: For the first four components, they occupy about 75% of total components, so we can not drop any one of them. If we drop one of these four components, it will affect consquence so much. we can drop the last one of the feature, and keep others features.
+
+## 1g).
+Use the biplot function of R (see its documentation) to plot the “factor loadings” of each data point on the first two principal components. Observe all vectors corresponding to all numerical features. Each one has a PC1 and a PC2 components. Observe the graph. Which features have roughly similar factor loading (coordinates in each PCA direction), and which one(s) are visibly different from the others?
+```{r}
+biplot(nmovies.pca)
+```
+Conclusion: We can see the "vote_average" and "runtime" have the same directions, and "budget", "popularity", "revenue" and "vote_count" have the same directions. "id" has the different direction compared with others variables, and it is visibly different from the others. The projection of "vote_average" on PC2 more influence than the projection of "runtime" on PC2. For those others variables exoect "id", not clearly to see from the graph, but the projection of those four variables strongly influence PC1. The angle between "id" and one of others vector is bigger than 90 degree, that means "id" is not likely to be correlated with one of others variables.
+
