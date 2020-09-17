@@ -1,0 +1,90 @@
+---
+title: "DAV_hw03_Model Selection and Model Validation"
+author: "Weijun Zhu"
+date: "October 27, 2019"
+output: pdf_document
+---
+```{r}
+library(car)
+data(Salaries)
+help(Salaries)
+```
+
+```{r}
+Salaries$rownames = rownames(Salaries)
+Salaries$rownames = NULL
+Salaries.old = Salaries
+Salaries = na.omit(Salaries)
+levels(Salaries$discipline) = c("Theorectical", "Applied")
+some(Salaries)
+```
+
+```{r}
+Hitters = na.omit(Hitters)
+```
+
+```{r}
+Salaries
+```
+
+# Exercise 1.
+### Perform stepwise regression starting with the full model using all the predictors of salary.
+```{r}
+library(leaps)
+regfit.full = regsubsets (salary ~ .,Salaries) 
+summary(regfit.full)
+```
+
+# Exercise 2.
+### Compare the coefficients of the stepwise model and the full model.
+```{r}
+coef(regfit.full ,6)
+```
+
+# Exercise 3.
+### Which variable of variables did stepwise drop from the full model?
+```{r}
+coef(regfit.full ,6)
+```
+Conclusion: The best model of 6 variables show above.
+
+# Exercise 4.
+### Perform a cross-validation of the stepwise model.
+```{r}
+k = 3
+set.seed(9) 
+folds = sample(1:k,nrow(Salaries),replace=TRUE) 
+cv.errors = matrix(NA,k,5, dimnames =list(NULL , paste(1:5)))
+```
+
+```{r}
+predict.regsubsets = function (object ,newdata ,id,...){ 
+  form=as.formula(object$call [[2]]) 
+  mat=model.matrix(form,newdata) 
+  coefi=coef(object ,id=id) 
+  xvars=names(coefi) 
+  mat[,xvars]%*%coefi 
+  }
+```
+
+```{r}
+for(j in 1:k){ 
+  best.fit = regsubsets (salary ~ .,data = Salaries[folds!=j,], nvmax=5) 
+  for(i in 1:5){ 
+    pred = predict.regsubsets(best.fit ,Salaries[folds == j,],id = i) 
+    cv.errors[ j,i] = mean((Salaries$salary[folds==j]-pred)^2) 
+  } 
+}
+```
+
+# Exercise 5.
+### Compare the two models using the mse’s from the cross-validations with number of folds equal to 3. Which model gives the better mse?
+```{r}
+mean.cv.errors = apply(cv.errors,2,mean) 
+mean.cv.errors
+par(mfrow=c(1,1)) 
+plot(mean.cv.errors,type = 'b')
+```
+Conclusion: We choose 3 variables model.
+
+

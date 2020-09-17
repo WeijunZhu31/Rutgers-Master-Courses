@@ -1,0 +1,240 @@
+---
+title: "DAV_hw03_Challenges and Remediation for OLS"
+author: "Weijun Zhu"
+date: "October 27, 2019"
+output: pdf_document
+---
+```{r}
+library("faraway")
+library("car")
+library("ggplot2")
+library("gridExtra")
+library("scatterplot3d")
+```
+
+```{r}
+# load data
+library(faraway)
+data(uswages)
+
+# manipulating the data getting rid of negative values for exper
+uswages$exper[uswages$exper < 0] = NA
+
+# convert race, smsa, and pt to factor variables
+uswages$race = factor(uswages$race)
+levels(uswages$race) = c("White", "Black")
+
+uswages$smsa = factor(uswages$smsa)
+levels(uswages$smsa) = c("No", "Yes")
+
+uswages$pt = factor(uswages$pt)
+levels(uswages$pt) = c("No", "Yes")
+
+# create region, a factor variable based on the four regions ne, mw,so, we
+uswages = data.frame(uswages, region = 1 * uswages$ne + 2 * uswages$mw + 3 * 
+    uswages$so + 4 * uswages$we)
+uswages$region = factor(uswages$region)
+levels(uswages$region) = c("ne", "mw", "so", "we")
+
+# delete the four regions ne,mw, so, we
+uswages = subset(uswages, select = -c(ne:we))
+
+# Take care of NAs
+uswages = na.omit(uswages)
+```
+
+
+# 1.Nonconstant variance
+### a.Using the uswage data, fit the model(m):
+wage ~ educ + exper + race + smsa + pt + region
+```{r}
+g <- lm(wage ~ educ + exper + race + smsa + pt + region, uswages)
+model <- fortify(g)
+```
+
+### b.Produce the Residuals vs. Fitted plot, and discuss if there are heteroskedasticity in the error variance.
+```{r}
+p1 <- qplot(.fitted, .resid, data = model) + geom_line(yintercept = 0, linetype = 'dashed') +
+  labs(title = 'Residual vs. Fitted', x = 'Fitted', y = 'Residuals') + geom_smooth(color = 'red', se = F)
+
+p2 = qplot(.fitted, .resid, data = model) + geom_line(yintercept = 0, linetype = "dashed") + 
+    labs(title = "Residual vs. Fitted", x = "Fitted", y = "Residuals") + geom_smooth(method ="lm",color = "red", se = F)
+
+grid.arrange(p1, p2, nrow = 2)
+```
+
+### c.Prodce the Scale-location plot, and discuss if there is any heteroskedasticity in the error variance
+
+```{r}
+p1 = qplot(.fitted, .resid, data = model) + geom_hline(yintercept = 0, linetype = "dashed") + 
+    labs(title = "Residuals vs Fitted", x = "Fitted", y = "Residuals") + geom_smooth(color = "red", 
+    se = F)
+
+p2 = qplot(.fitted, abs(.resid), data = model) + geom_hline(yintercept = 0, 
+    linetype = "dashed") + labs(title = "Scale-Location", x = "Fitted", y = "|Residuals|") + 
+    geom_smooth(method = "lm", color = "red", se = F)
+
+p3 = qplot(.fitted, .resid, data = model) + geom_hline(yintercept = 0, linetype = "dashed") + 
+    labs(title = "Residuals vs Fitted", x = "Fitted", y = "Residuals") + geom_smooth(color = "red", 
+    se = F)
+
+p4 = qplot(.fitted, abs(.resid), data = model) + geom_hline(yintercept = 0, 
+    linetype = "dashed") + labs(title = "Scale-Location", x = "Fitted", y = "|Residuals|") + 
+    geom_smooth(method = "lm", color = "red", se = F)
+
+grid.arrange(p1, p2, p3, p4, nrow = 2)
+```
+
+
+
+### d.Perform the approximate test of non-constant error variance
+```{r}
+summary(lm(abs(residuals(g)) ~ fitted(g)))
+```
+Conclusion: The t-test rejects constant error variance with a level of significance 10%, since the p-value is 6.528e-14, is much smaller than 0.10.
+
+
+# 2. Non-normal errors
+### a.Plot the Normal Q-Q plot and Histogram of the residuals from model(m). Do they indicate non-normal errors?
+```{r}
+p1 = qplot(sample = scale(.resid), data = model) + geom_abline(intercept = 0, 
+    slope = 1, color = "red") + labs(title = "Untransformed y", y = "Residuals")
+
+p2 = qplot(sample = scale(.resid), data = model) + geom_abline(intercept = 0, 
+    slope = 1, color = "red") + labs(title = "Sqrt-transformed y", y = "Residuals")
+
+grid.arrange(p1, p2, nrow = 2)
+```
+```{r}
+p1 = qplot(scale(.resid), data = model, geom = "blank") + geom_line(aes(y = ..density.., 
+    color = "Emperical"), stat = "density") + stat_function(fun = dnorm, aes(color = "normal")) + 
+    
+geom_histogram(aes(y = ..density..), alpha = 0.4) + scale_color_manual(name = "Density", 
+    values = c("red", "blue")) + theme(legend.position = c(0.85, 0.85)) + labs(title = "Untransformed y", 
+    y = "Residuals")
+
+p2 = qplot(scale(.resid), data = model, geom = "blank") + geom_line(aes(y = ..density.., 
+    color = "Emperical"), stat = "density") + stat_function(fun = dnorm, aes(color = "normal")) + 
+    
+geom_histogram(aes(y = ..density..), alpha = 0.4) + scale_color_manual(name = "Density", 
+    values = c("red", "blue")) + theme(legend.position = c(0.85, 0.85)) + labs(title = "Untransformed y", 
+    y = "Residuals")
+
+grid.arrange(p1, p2, nrow = 2)
+```
+Conclusion: The residuals of the untransformed model looks like normal. The residuals of the sqrt-transformed model look like normal.
+
+
+### b.Perform the Shapiro-Wilk test of normality for the residuals of model(m). What is the p-value and what does it say about normality?
+```{r}
+shapiro.test(residuals(g))
+```
+Conclusion: We reject the null hypothesis of normality for the residuals of untransformed model with level of significance 10%, since the p-value is much smaller than 0.10.
+
+### c.Find the optimal Box-Cox power transform and apply it to wage, refit model(m), replot Normal Q-Q Plot and perform the Shapiro-Wilk test of normality again. Did the Box-Cox Transform work?
+```{r}
+(lambda = powerTransform(g))
+```
+```{r}
+# lam = lambda$lambda
+# glam = lm(wage^lam ~ educ + exper + race + smsa + pt + region, uswages)
+# modlam = fortify(glam)
+# 
+# p1 = qplot(sample = scale(.resid), data = uswages) + geom_abline(intercept = 0, 
+#     slope = 1, color = "red") + labs(title = "Normal Q-Q plot", y = "Residuals sqrt-transformed")
+# 
+# p2 = qplot(sample = scale(.resid), data = uswages) + geom_abline(intercept = 0,
+#     slope = 1, color = "red") + labs(title = "Normal Q-Q plot", y = "Residuals sqrt-transformed")
+# 
+# grid.arrange(p1, p2, nrow = 1)
+```
+Conclusion : It doesn't work.
+
+
+# 3. Influential outliers
+### a.Produce the influence plot for model(m). Are there any really large Cook Distances?
+```{r}
+influencePlot(glam)
+```
+Conclusion: Yes, there are.
+
+### b.Produce half-normal plot of the leverage values. Are there any high leverage data points?
+```{r}
+halfnorm(lm.influence(glam)$hat, labs = islands, ylab = "leverages")
+```
+Conclusion: Yes, there are some high leverage data points we can get from the graph.
+
+### c.Produce half-normal plot of the Cook’s Distance. Are there any points which has large Cook’s distance?
+```{r}
+cook = cooks.distance(glam)
+halfnorm(cook, 3, labs = islands, ylab = "Cook's distance")
+```
+Conclusion；There is a point which has almost 0.04 Cook's Distance.
+
+### d.Fit model excluding observation with largest Cook’s distance. Do the coefficients change? Are there any coefficients with notable changes?
+```{r}
+glam1 = lm(wage^lam ~ educ + exper + race + smsa + pt + region, uswages, 
+    subset = (cook < max(cook)))
+compareCoefs(glam, glam1)
+```
+Conclusion: Regionmw changes a lot.
+
+### e.Produce the omnibus diagnostic plot for the model(m). Which observation consistently stands out as as outlier-influential point in all four plots?
+```{r}
+oldpar = par(mfrow = c(2, 2))
+plot(glam, main = "Gala Data")
+```
+
+
+# 4. Model structure
+### a.Produce the CERES plots for model(m). Do the factor variables stop the plots from printing?
+```{r}
+ceresPlots(g, terms = ~.)
+```
+### b.How many plots are there? Why these?
+There are two plots, since they are numerical and continuous variables.
+
+### c.Do the plots indicate a plynomial model should be considered?
+Yes.
+
+
+# 5. Interaction model
+### a.Fit an interaction model using the region and the two numeric variables. Is the model useful?
+```{r}
+g1 <- lm(wage ~ region + educ + exper, uswages)
+```
+Conclusion: Yes, it is useful.
+
+### b.Test the interaction model versus model(m). What is the p-value and which model does it indicate?
+```{r}
+summary(g1)
+```
+Conclusion: The p-value is 3.08e-05, and it means significant, and it rejects the null hypothesis.
+
+# Collinearity
+### Find the variance inflation factors for model(m)
+```{r}
+vif(g)
+```
+```{r}
+g1 = lm(wage ~ region + educ + exper, uswages)
+summary(g1)
+anova(g1, g)
+```
+
+### Do they indicate collinearity in the predictors?
+```{r}
+sqrt(vif(g)) > 2
+```
+Conclusion: No.
+
+
+
+
+
+
+
+
+
+
+

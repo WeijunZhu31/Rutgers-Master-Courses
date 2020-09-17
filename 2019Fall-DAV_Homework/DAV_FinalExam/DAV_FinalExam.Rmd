@@ -1,0 +1,167 @@
+---
+title: "DAV_FinalExam"
+author: "Group 11": "Weijun Zhu; Chuan Wu; Dinglun Tan"
+date: "December 7, 2019"
+output: pdf_document
+toc: yes
+---
+```{r}
+library(tidyverse)
+library(e1071)
+library(randomForest)
+
+set.seed(9)
+```
+
+# Problem 1.
+Generate a data set with n = 500 and p = 2, such that the observations belong to two classes with a quadratic decision boundary between them.
+```{r}
+x1 = runif(500) - 50
+x2 = runif (500) - 50
+y = 1 * (x1^2 - x2^2 > 0)
+# Create a dataframe to sotre the data
+df <- data.frame(y=as.factor(y),x1,x2)
+```
+
+
+## (1). 
+Plot the observations, colored according to their class labels. The plot should display X1 on x-axis and X2 y-axis.
+```{r}
+ggplot(df, aes(x=x1, y=x2, col=y)) + 
+  geom_point()
+```
+
+## (2).
+Fit a logistic regression model to the data, using X1 and X2 as predictors.
+```{r}
+log.fit <- glm(y ~ x1 + x2, family = binomial)
+summary(log.fit)
+```
+
+## (3).
+Apply this model to the training data in order to obtain a predicted class label for each
+training observation. Plot the observations, colored according to the predicted class labels.
+The decision boundary is linear.
+```{r}
+prob <- predict(log.fit, df, type="response")
+log.pred <- ifelse(prob > 0.5, 1, 0)
+ggplot(data.frame(x1=df$x1, x2=df$x2, pred = as.factor(log.pred)), aes(x=x1,y=x2,col=pred)) + 
+  geom_point()
+```
+
+## (4).
+Fit a support vector classifier to the data with X1 and X2 as predictors.Obtain a class
+prediction for each training observation. Plot the observations colored according to the
+predicted class labels.
+```{r}
+svm.fit <- svm(as.factor(y) ~ x1 + x2, df, kernel = "linear", cost = 1)
+svm.pred <- predict(svm.fit, df)
+ggplot(data.frame(x1=df$x1, x2=df$x2, pred = as.factor(svm.pred)), aes(x=x1,y=x2,col=pred)) +
+  geom_point()
+```
+
+## (5).
+Fit a SVM with non linear kernel to the data. Obtain a class prediction for each training
+observation. Plot the observations, colored according to the predicted class labels.
+```{r}
+svm.fit <- svm(as.factor(y) ~ x1 + x2, df, gamma = 1)
+svm.pred <- predict(svm.fit, df)
+ggplot(data.frame(x1=df$x1, x2=df$x2, pred = as.factor(svm.pred)), aes(x=x1,y=x2,col=pred)) +
+  geom_point()
+```
+
+## (6).
+Comment on your results.
+
+Conclusion: Here we can see that linear kernel SVMs are good at finding the  boundaries.
+
+
+# problem 2.
+Consider the USArrests data, perform hierarchical clustering on the states.
+```{r}
+library(ISLR)
+library(tidyverse)
+library(ggthemes)
+```
+
+## (1).
+Using the hierarchical clustering with complete linkage and Euclidean distance, cluster the states.
+```{r}
+data <- USArrests
+hc.comp <- hclust(dist(data), method="complete")
+plot(hc.comp)
+```
+
+## (2).
+Cut the dendrogram at a height that results in three distinct clusters. Which states belong to which clusters?
+```{r}
+ct <- cutree(hc.comp, 3)
+sort(ct)
+```
+
+## (3).
+Now scale the variables to have standard deviation one. Hierarchically cluster the scaled data with complete linkage and Euclidean distance.
+```{r}
+hc.comp.sc <- hclust(dist(scale(US)), method = "complete")
+plot(hc.comp.sc)
+```
+
+## (4).
+What effect does scaling the variables have on the hierarchical clusters obtained? Should the variables be scaled before inter-observation distances are computed. Provide justification for your answer.
+```{r}
+cutree(hc.comp.sc, 3)
+```
+
+
+Conclusion: Yes, We need to scale the data because the scale of the "Murder" and "Assualt" has different size, and it will affect our consequence. It effects the hierarchical clustering. We don’t get the same clusters. If we don't scale the data, it will affec the euclidean distances, and the euclidean distances is the way we use to analysis cluster. So scaling is better to use before we fit the hierarchical clusters.
+
+
+# Problem 3.
+Apply linear regression and random forests on the Hitters dataset to predict the Salary.
+Remove the observations for whom the salary information is unknown and perform log-transformation of the salaries. Be sure to fit the models on a training set and evaluate using test set. How accurate are the result of random forests compared to linear regression? Use MSE to compare model accuracy. 
+```{r}
+library(ISLR)
+data("Hitters")
+glimpse(Hitters)
+```
+
+Drop the observations for whom the salary information is unknown.
+```{r}
+Hitters <- na.omit(Hitters)
+Hitters$Salary = log(Hitters$Salary)
+head(Hitters)
+```
+
+Splict the training set and test set
+```{r}
+train_sub <- sample(nrow(Hitters), 0.7*nrow(Hitters))
+train_set <- Hitters[train_sub,]  # Traning Set
+test_set <- Hitters[-train_sub,]  # Test Set
+rm(train_sub)
+```
+
+Random Forest for training data.
+```{r}
+rdmodel.1 <- randomForest(Salary ~ ., data = train_set)
+rdmodel.1
+pred1 <- predict(rdmodel.1,test_set)
+pred1
+cat('MSE of Random Forest is:')
+mean((pred1 - test_set$Salary)^2)
+```
+We can see MSE is 0.2155. 
+
+Linear Regression for training data.
+```{r}
+lgmodel.1 <- lm(Salary ~ ., data = train_set)
+lgmodel.1
+pred2 <- predict(lgmodel.1, test_set)
+cat('MSE of Linear Regression is:')
+mean((pred2 - test_set$Salary)^2)
+```
+Conclusion: To estimate the MSE, we can find random forest is better than linear regression.
+
+
+
+
+

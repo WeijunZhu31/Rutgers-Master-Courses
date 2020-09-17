@@ -1,0 +1,161 @@
+---
+title: "DAV_hw04"
+author: "Weijun Zhu"
+date: "November 19, 2019"
+output:
+  pdf_document: default
+  html_document: default
+toc: yes
+---
+# Problem 1  ( 30 points)
+Generate a simulated data set with 20 observations in each of three classes (i.e. 60
+observations total), and 50 variables. Be sure to add a mean shift to the observations in each
+class so that there are three distinct classes.
+
+Hint: Use rnorm() function in R.
+```{r}
+data <- rbind(matrix(rnorm(20*50, mean = 0), nrow = 20),
+              matrix(rnorm(20*50, mean=0.7), nrow = 20),
+              matrix(rnorm(20*50, mean=1.4), nrow = 20))
+dim(data)
+```
+
+### A. 
+Perform K-means clustering of the observations with K = 3. How well do the clusters that
+you obtained in K-means clustering compare to the true class labels?
+
+Hint: You can use the table() function in R to compare the true class labels to the class
+labels obtained by clustering. Be careful how you interpret the results: K-means
+clustering will arbitrarily number the clusters, so you cannot simply check whether the
+true class labels and clustering labels are the same. 
+```{r}
+model_km <- kmeans(data, centers=3)
+true_class = c(rep(1,20), rep(2,20), rep(3,20))
+table(model_km$cluster, true_class)
+```
+Conclusion: Every cluters separate perfectly!
+
+### B.
+Perform K-means clustering with K = 2. Describe your results.
+```{r}
+model_km <- kmeans(data, centers=2)
+true_class = c(rep(1,20), rep(2,20), rep(3,20))
+table(model_km$cluster, true_class)
+```
+Conclusion: The consequence looks not good.
+
+### C.
+Now perform K-means clustering with K = 4, and describe your results
+```{r}
+model_km <- kmeans(data, centers=4)
+true_class = c(rep(1,20), rep(2,20), rep(3,20))
+table(model_km$cluster, true_class)
+
+```
+Conclusion: The consequence of this time looks so bad.
+
+# Problem 2. ( 50 points)
+Using the Carseats dataset in ISLR package, predict Sales using regression trees and related
+approaches, treating the response as a quantitative variable. 
+
+```{r}
+library(ISLR)
+data(Carseats)
+str(Carseats)
+```
+
+### A.
+Split the data set into a training set and a test set. 
+```{r}
+split <- sample(nrow(Carseats), size=0.7*nrow(Carseats))
+training <- Carseats[split,]
+testing <- Carseats[-split,]
+```
+
+### B.
+Fit a regression tree to the training set. Plot the tree, and interpret the results. What test
+error rate do you obtain? 
+```{r}
+library(rpart)
+set.seed(9)
+rpart_model <- rpart(Sales ~ ., data = training, method = 'anova')
+```
+
+```{r}
+plot(rpart_model)
+text(rpart_model, pretty = 0)
+```
+
+```{r}
+tree_df_pred <- predict(rpart_model, testing)
+mean((testing$Sales - tree_df_pred)^2)
+```
+
+### C.
+Use cross-validation in order to determine the optimal level of tree complexity. Does
+pruning the tree improve the test error rate? 
+```{r}
+library(randomForest)
+p <- dim(Carseats)[2]-1
+bagging <- randomForest(Sales~., data = training, importance = T, mtry = p, ntree = 500)
+bagging_pred <- predict(bagging, testing)
+importance(bagging)
+```
+
+```{r}
+mean((bagging_pred-testing$Sales)^2)
+```
+Conclusion: Yes, this tree improves the test error rate.
+
+### E.
+Use random forests to analyze this data. What test error rate do you obtain? Use the
+importance() function to determine which variables are most important. Describe the effect
+of m, the number of variables considered at each split, on the error rate obtained. 
+```{r}
+MSE_list <- sapply(1:(p-1), function(i){
+  randomF <- randomForest(Sales~., data = training, importance = T, mtry = i, ntree = 500)
+  randomF_pred <- predict(randomF, testing)
+  mean((randomF_pred-testing$Sales)^2)
+})
+minNbrTrees <- which.min(MSE_list)
+min(MSE_list)
+```
+```{r}
+randomF <- randomForest(Sales~., data = training, importance = T, mtry = minNbrTrees, ntree = 500)
+importance(randomF)
+```
+
+# Problem 3 (20 points) 
+In this problem, using the Auto dataset in ISLR package, apply support vector approaches to
+predict whether a given car gets high or low gas mileage.
+```{r}
+data(Auto)
+str(Auto)
+```
+
+### A. 
+Create a binary variable that takes on a 1 for cars with gas mileage above the median, and
+a 0 for cars with gas mileage below the median. 
+```{r}
+library(e1071)
+library(plyr)
+set.seed(9)
+med <- median(Auto$mpg)
+df <- mutate(Auto, mpgF = as.factor(ifelse(mpg > med,1,0)))
+N <- dim(Auto)[1]
+trainSample <- sample(1:N, N/2)
+train <- df[trainSample,]
+test <- df[-trainSample,]
+```
+
+### B.
+Fit a support vector classifier to the data with various values of cost, in order to predict
+whether a car gets high or low gas mileage. Report the cross-validation errors associated
+with different values of this parameter. Comment on your results. 
+```{r}
+svm.tune <- tune(svm, mpgF ~ ., data = train, kernel = "linear", ranges = list(cost = c(0.01, 0.1, 1, 5, 10, 100)))
+summary(svm.tune)
+```
+Conclusion:  The best result is when the cost=1, and we get a cross validation error of 0.02552632.
+
+

@@ -1,0 +1,138 @@
+---
+title: "DAV_hw03_More Remedies for Error Problems"
+author: "Weijun Zhu"
+date: "October 27, 2019"
+output:
+---
+```{r}
+library("printr")
+library("faraway")
+library("car")
+library("MASS")
+library("rgl")
+library("MASS")
+library("quantreg")
+library("robustbase")
+```
+
+
+# Exercise 1
+### a.Create factors, remove NAs
+```{r}
+data("uswages")
+uswages$exper[uswages$exper < 0] = NA
+uswages = na.omit(uswages)
+```
+
+### b.Process the data to make factors with named levels for race, smsa, and pt
+```{r}
+uswages$race = factor(uswages$race)
+levels(uswages$race) = c("White", "Black")
+
+uswages$smsa = factor(uswages$smsa)
+levels(uswages$smsa) = c("No", "Yes")
+
+uswages$pt = factor(uswages$pt)
+levels(uswages$pt) = c("No", "Yes")
+```
+
+### c.Replace the indicator variables ne, mw, so, and we with one factor variable called region
+```{r}
+uswages = data.frame(uswages, region = 1 * uswages$ne + 2 * uswages$mw + 3 * 
+    uswages$so + 4 * uswages$we)
+uswages$region = factor(uswages$region)
+levels(uswages$region) = c("ne", "mw", "so", "we")
+uswages = subset(uswages, select = -c(ne:we))
+```
+
+### d.Remove all NAs
+```{r}
+uswages = na.omit(uswages)
+```
+
+
+# Exercise 2
+### a.Show the summary of your final data
+```{r}
+summary(uswages)
+```
+
+
+# Exercise 3
+### a.Compute the OLS fit to model log(wage)
+```{r}
+g = lm(wage ~ educ + exper + race + smsa + pt + region, uswages)
+summary(g)
+shapiro.test(residuals(g))
+car::durbinWatsonTest(residuals(g))
+car::vif(g)
+par(mfrow=c(2,2))
+plot(g)
+```
+
+### b.Perform Shapiro-Wilk test of Normality for the residuals, what is the conclusion?
+```{r}
+shapiro.test(residuals(g))
+```
+Conclusion: We reject the null hypothesis of normality for the residuals with level of significance 10% since the p-value is less than 0.10.
+
+# Exercise 4
+### a.Compute WLS fit to model log(wage) and weights = 1/(1+educ)
+```{r}
+g1 = lm(wage ~ educ + exper + race + smsa + pt + region, uswages)
+g2 = lm(wage ~ educ + exper + race + smsa + pt + region, uswages,
+         weight=1/(1+educ))
+compareCoefs(g1, g2)
+```
+
+### b.Perform Shapiro-Wilk test of Normality for the residuals, what is the conclusion?
+```{r}
+shapiro.test(residuals(g2))
+```
+Conclusion: We reject the null hypothesis of normality for the residuals with level of significance 10% since the p-value is less than 0.10.
+
+
+# Exercise 5
+### a.Compute Robust fit to model log(wage), using Huber, Hampel, Bisquare, LTS and LAD
+```{r}
+# Huber
+g2 = rlm(wage ~ educ + exper + race + smsa + pt + region, psi = psi.huber, uswages)
+
+# Hampel
+g4 = rlm(wage ~ educ + exper + race + smsa + pt + region, psi = psi.hampel, init="lts", maxit=100,
+         uswages)
+# Bisquare
+g3 = rlm(wage ~ educ + exper + race + smsa + pt + region, psi = psi.bisquare, init="lts", maxit=100,
+         uswages)
+```
+
+```{r}
+# LTS
+g5 = ltsReg(wage ~ educ + exper + race + smsa + pt + region, uswages)
+g6 = ltsReg(wage ~ educ + exper + race + smsa + pt + region, uswages, nsamp="exact")
+```
+
+```{r}
+# LAD
+g7 = rq(wage ~ educ + exper + race + smsa + pt + region, data = uswages)
+```
+
+
+### b.Compare coefficients of the above fits using OLS, WLS, Huber, Hampel, Biquare, LTS, and LAD
+```{r}
+
+coefs = compareCoefs(g1, g2, g4, g3, se = FALSE)
+
+colnames(coefs) = c("OLS", "Huber", "Hample", "Bisquare")
+
+coefs
+```
+
+### c.Which would you recommend?
+LTS is recommended since it has the best breakdown.
+
+
+
+
+
+
